@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../models/note.dart';
 import 'edit_note_screen.dart'; // We'll create this next
 
+
 class NotesScreen extends StatelessWidget {
   final String uid;
   const NotesScreen({super.key, required this.uid});
