@@ -20,6 +20,7 @@ import 'wallet_screen.dart';
 // --- NEW: Import new screens ---
 import 'diary_screen.dart';
 import 'notes_screen.dart';
+import 'timetable_screen.dart'; // <<<--- ADD THIS IMPORT
 import '../models/user.dart' as app_user;
 
 class HomeScreen extends StatelessWidget {
@@ -99,6 +100,8 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
                 _buildDrawerItem(context, icon: Icons.dashboard, title: 'Dashboard', screen: this),
+                // --- ADDED TIMETABLE HERE ---
+                _buildDrawerItem(context, icon: Icons.calendar_month, title: 'Timetable', screen: TimetableScreen(uid: uid)),
                 _buildDrawerItem(context, icon: Icons.calendar_today, title: 'Daily Rewards', screen: DailyRewardsScreen(uid: uid)),
                 _buildDrawerItem(context, icon: Icons.auto_stories, title: 'Epic Quests', screen: EpicQuestsScreen(uid: uid)),
                 _buildDrawerItem(context, icon: Icons.list_alt, title: 'Quest Log', screen: QuestScreen(uid: uid)),
@@ -145,4 +148,3 @@ class HomeScreen extends StatelessWidget {
     );
   }
 }
-
