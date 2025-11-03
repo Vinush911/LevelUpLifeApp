@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/timetable_entry.dart';
+import '../services/notification_service.dart'; // <<<--- ADD THIS IMPORT
 
 class EditTimetableEntryScreen extends StatefulWidget {
   final String uid;
@@ -81,6 +82,7 @@ class _EditTimetableEntryScreenState extends State<EditTimetableEntryScreen> {
     }
   }
 
+  // --- vvv THIS FUNCTION IS UPDATED vvv ---
   Future<void> _saveEntry() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedDays.every((day) => day == false)) {
@@ -99,17 +101,37 @@ class _EditTimetableEntryScreenState extends State<EditTimetableEntryScreen> {
       }
     }
 
-    final entryData = {
-      'title': _titleController.text,
-      'startTimeMinutes': TimetableEntry.timeOfDayToMinutes(_startTime),
-      'endTimeMinutes': TimetableEntry.timeOfDayToMinutes(_endTime),
-      'repeatDays': repeatDays,
-      'reminderEnabled': _reminderEnabled,
-      'reminderTimeOffset': _reminderOffset,
-    };
-
     try {
       final collectionRef = FirebaseFirestore.instance.collection('users').doc(widget.uid).collection('timetable_entries');
+
+      // Create a temporary entry object to pass to the notification service
+      // We need to do this *before* saving to get all the data.
+      final tempEntry = TimetableEntry(
+        id: widget.entry?.id ?? '', // ID will be blank for new entries
+        title: _titleController.text,
+        startTimeMinutes: TimetableEntry.timeOfDayToMinutes(_startTime),
+        endTimeMinutes: TimetableEntry.timeOfDayToMinutes(_endTime),
+        repeatDays: repeatDays,
+        reminderEnabled: _reminderEnabled,
+        reminderTimeOffset: _reminderOffset,
+        notificationId: widget.entry?.notificationId, // Pass the OLD ID for cancellation
+      );
+
+      // Schedule (or cancel) the notification
+      // This will cancel the old one and schedule a new one if enabled.
+      final newNotificationId = await NotificationService.scheduleTimetableEntry(tempEntry);
+
+      // Now, build the final data map to save to Firestore
+      final entryData = {
+        'title': tempEntry.title,
+        'startTimeMinutes': tempEntry.startTimeMinutes,
+        'endTimeMinutes': tempEntry.endTimeMinutes,
+        'repeatDays': tempEntry.repeatDays,
+        'reminderEnabled': tempEntry.reminderEnabled,
+        'reminderTimeOffset': tempEntry.reminderTimeOffset,
+        'notificationId': _reminderEnabled ? newNotificationId : null, // Store the new ID
+      };
+
       if (widget.entry == null) {
         // Create new
         await collectionRef.add(entryData);
@@ -117,7 +139,9 @@ class _EditTimetableEntryScreenState extends State<EditTimetableEntryScreen> {
         // Update existing
         await collectionRef.doc(widget.entry!.id).update(entryData);
       }
+
       if (mounted) Navigator.pop(context);
+
     } catch (e) {
       debugPrint("Error saving entry: $e");
       if (mounted) {
@@ -129,6 +153,8 @@ class _EditTimetableEntryScreenState extends State<EditTimetableEntryScreen> {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+  // --- ^^^ THIS FUNCTION IS UPDATED ^^^ ---
+
 
   @override
   Widget build(BuildContext context) {

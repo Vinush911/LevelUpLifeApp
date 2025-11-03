@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
 import '../models/timetable_entry.dart';
 import 'edit_timetable_entry_screen.dart';
+import '../services/notification_service.dart'; // <<<--- ADD THIS IMPORT
 
 class TimetableScreen extends StatefulWidget {
   final String uid;
@@ -38,6 +39,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
     return _dayLabels[date.weekday - 1];
   }
 
+  // --- vvv THIS FUNCTION IS UPDATED vvv ---
   Future<void> _deleteEntry(TimetableEntry entry) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -56,6 +58,12 @@ class _TimetableScreenState extends State<TimetableScreen> {
 
     if (confirm) {
       try {
+        // 1. Cancel the notification first
+        if (entry.notificationId != null) {
+          await NotificationService.cancelNotification(entry.notificationId!);
+        }
+
+        // 2. Delete the document from Firestore
         await FirebaseFirestore.instance
             .collection('users')
             .doc(widget.uid)
@@ -71,6 +79,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
       }
     }
   }
+  // --- ^^^ THIS FUNCTION IS UPDATED ^^^ ---
 
   @override
   Widget build(BuildContext context) {
@@ -171,7 +180,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if(entry.reminderEnabled) Icon(Icons.notifications, size: 18, color: Colors.grey.shade400),
+                    if(entry.reminderEnabled) Icon(Icons.notifications_active, size: 18, color: Colors.purple.shade200), // <<< UPDATED ICON
                     IconButton(
                       icon: const Icon(Icons.edit_outlined),
                       tooltip: "Edit",

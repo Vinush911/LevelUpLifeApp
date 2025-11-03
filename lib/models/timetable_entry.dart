@@ -9,6 +9,7 @@ class TimetableEntry {
   final List<String> repeatDays; // e.g., ['Mon', 'Tue', 'Wed']
   final bool reminderEnabled;
   final int reminderTimeOffset; // Minutes before the start time
+  final int? notificationId; // <<<--- ADD THIS FIELD
 
   TimetableEntry({
     required this.id,
@@ -18,6 +19,7 @@ class TimetableEntry {
     required this.repeatDays,
     required this.reminderEnabled,
     required this.reminderTimeOffset,
+    this.notificationId, // <<<--- ADD THIS
   });
 
   // Helper to convert TimeOfDay to minutes
@@ -44,6 +46,7 @@ class TimetableEntry {
       repeatDays: List<String>.from(data['repeatDays'] ?? []),
       reminderEnabled: data['reminderEnabled'] ?? false,
       reminderTimeOffset: (data['reminderTimeOffset'] as num? ?? 5).toInt(),
+      notificationId: (data['notificationId'] as num?)?.toInt(), // <<<--- ADD THIS
     );
   }
 
@@ -55,6 +58,7 @@ class TimetableEntry {
       'repeatDays': repeatDays,
       'reminderEnabled': reminderEnabled,
       'reminderTimeOffset': reminderTimeOffset,
+      'notificationId': notificationId, // <<<--- ADD THIS
     };
   }
 }

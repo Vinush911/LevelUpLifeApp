@@ -6,20 +6,26 @@ import 'package:cloud_firestore/cloud_firestore.dart'; // --- NEW: Import Firest
 import 'firebase_options.dart';
 import 'screens/home_screen.dart';
 import 'screens/auth_screen.dart';
+import 'services/notification_service.dart'; // <<<--- ADD THIS IMPORT
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase.
+  // 1️⃣ Initialize Firebase
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // --- NEW: Enable Firestore offline persistence ---
+  // 2️⃣ Enable Firestore offline persistence
   FirebaseFirestore.instance.settings = const Settings(
     persistenceEnabled: true,
   );
-  // --- End of new code ---
+
+  // 3️⃣ Initialize NotificationService before using it
+  await NotificationService.init();
+
+  // 4️⃣ Ask user for notification permission (optional but recommended)
+  await NotificationService.requestPermissions();
 
   runApp(const MyApp());
 }

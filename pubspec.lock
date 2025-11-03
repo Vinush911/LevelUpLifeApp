@@ -129,6 +129,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.8"
+  dbus:
+    dependency: transitive
+    description:
+      name: dbus
+      sha256: "79e0c23480ff85dc68de79e2cd6334add97e48f7f4865d17686dd6ea81a47e8c"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.7.11"
+  equatable:
+    dependency: transitive
+    description:
+      name: equatable
+      sha256: "567c64b3cb4cf82397aac55f4f0cbd3ca20d77c6c03bedbc4ceaddc08904aef7"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.7"
   fake_async:
     dependency: transitive
     description:
@@ -181,10 +197,10 @@ packages:
     dependency: transitive
     description:
       name: firebase_core_platform_interface
-      sha256: "5873a370f0d232918e23a5a6137dbe4c2c47cf017301f4ea02d9d636e52f60f0"
+      sha256: cccb4f572325dc14904c02fcc7db6323ad62ba02536833dddb5c02cac7341c64
       url: "https://pub.dev"
     source: hosted
-    version: "6.0.1"
+    version: "6.0.2"
   firebase_core_web:
     dependency: transitive
     description:
@@ -214,16 +230,64 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "5.0.0"
+  flutter_local_notifications:
+    dependency: "direct main"
+    description:
+      name: flutter_local_notifications
+      sha256: "19ffb0a8bb7407875555e5e98d7343a633bb73707bae6c6a5f37c90014077875"
+      url: "https://pub.dev"
+    source: hosted
+    version: "19.5.0"
+  flutter_local_notifications_linux:
+    dependency: transitive
+    description:
+      name: flutter_local_notifications_linux
+      sha256: e3c277b2daab8e36ac5a6820536668d07e83851aeeb79c446e525a70710770a5
+      url: "https://pub.dev"
+    source: hosted
+    version: "6.0.0"
+  flutter_local_notifications_platform_interface:
+    dependency: transitive
+    description:
+      name: flutter_local_notifications_platform_interface
+      sha256: "277d25d960c15674ce78ca97f57d0bae2ee401c844b6ac80fcd972a9c99d09fe"
+      url: "https://pub.dev"
+    source: hosted
+    version: "9.1.0"
+  flutter_local_notifications_windows:
+    dependency: transitive
+    description:
+      name: flutter_local_notifications_windows
+      sha256: "8d658f0d367c48bd420e7cf2d26655e2d1130147bca1eea917e576ca76668aaf"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.3"
   flutter_test:
     dependency: "direct dev"
     description: flutter
     source: sdk
     version: "0.0.0"
+  flutter_timezone:
+    dependency: "direct main"
+    description:
+      name: flutter_timezone
+      sha256: "978192f2f9ea6d019a4de4f0211d76a9af955ca24865828fa98ca4e20cf0cb3c"
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.0.1"
   flutter_web_plugins:
     dependency: transitive
     description: flutter
     source: sdk
     version: "0.0.0"
+  http:
+    dependency: transitive
+    description:
+      name: http
+      sha256: bb2ce4590bc2667c96f318d68cac1b5a7987ec819351d32b1c987239a815e007
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.5.0"
   http_parser:
     dependency: transitive
     description:
@@ -288,6 +352,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "5.1.1"
+  logger:
+    dependency: transitive
+    description:
+      name: logger
+      sha256: a7967e31b703831a893bbc3c3dd11db08126fe5f369b5c648a36f821979f5be3
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.6.2"
   matcher:
     dependency: transitive
     description:
@@ -340,18 +412,18 @@ packages:
     dependency: "direct main"
     description:
       name: permission_handler
-      sha256: "59adad729136f01ea9e35a48f5d1395e25cba6cea552249ddbe9cf950f5d7849"
+      sha256: bc917da36261b00137bbc8896bf1482169cd76f866282368948f032c8c1caae1
       url: "https://pub.dev"
     source: hosted
-    version: "11.4.0"
+    version: "12.0.1"
   permission_handler_android:
     dependency: transitive
     description:
       name: permission_handler_android
-      sha256: d3971dcdd76182a0c198c096b5db2f0884b0d4196723d21a866fc4cdea057ebc
+      sha256: "1e3bc410ca1bf84662104b100eb126e066cb55791b7451307f9708d4007350e6"
       url: "https://pub.dev"
     source: hosted
-    version: "12.1.0"
+    version: "13.0.1"
   permission_handler_apple:
     dependency: transitive
     description:
@@ -416,6 +488,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.0.3"
+  rename:
+    dependency: "direct main"
+    description:
+      name: rename
+      sha256: da5f4d67f8c68f066ad04edfd6585495dbe595f2baf3b1999eb6af1805d79539
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.1.0"
   simple_gesture_detector:
     dependency: transitive
     description:
@@ -509,6 +589,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.7.4"
+  timezone:
+    dependency: "direct main"
+    description:
+      name: timezone
+      sha256: dd14a3b83cfd7cb19e7888f1cbc20f258b8d71b54c06f79ac585f14093a287d1
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.10.1"
   typed_data:
     dependency: transitive
     description:
@@ -637,6 +725,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.23.0"
+  xdg_directories:
+    dependency: transitive
+    description:
+      name: xdg_directories
+      sha256: "7a3f37b05d989967cdddcbb571f1ea834867ae2faa29725fd085180e0883aa15"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.1.0"
   xml:
     dependency: transitive
     description:
