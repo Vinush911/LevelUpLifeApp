@@ -10,8 +10,8 @@ import 'package:fl_chart/fl_chart.dart';
 import '../widgets/level_up_overlay.dart';
 import '../widgets/unlock_overlay.dart';
 
-// --- NEW ENUM for filters ---
-enum ExpenseFilter { week, month, threeMonth, sixMonth, year }
+// --- UPDATED ENUM for filters ---
+enum ExpenseFilter { sevenDays, thirtyDays, threeMonth, sixMonth, year }
 
 class WalletScreen extends StatefulWidget {
   final String uid;
@@ -24,7 +24,7 @@ class WalletScreen extends StatefulWidget {
 class _WalletScreenState extends State<WalletScreen>
     with SingleTickerProviderStateMixin {
   // --- UPDATED State variables ---
-  ExpenseFilter _selectedFilter = ExpenseFilter.week;
+  ExpenseFilter _selectedFilter = ExpenseFilter.sevenDays; // <<< MODIFIED
   late TabController _tabController;
   int _currentTabIndex = 0;
 
@@ -55,7 +55,7 @@ class _WalletScreenState extends State<WalletScreen>
     super.dispose();
   }
 
-  // --- (Add/Edit Dialog is unchanged, but you can copy it from here if needed) ---
+  // --- (Add/Edit Dialog is unchanged) ---
   void _showExpenseDialog({Expense? expense}) {
     final bool isEditing = expense != null;
     final formKey = GlobalKey<FormState>();
@@ -90,7 +90,7 @@ class _WalletScreenState extends State<WalletScreen>
                         controller: amountController,
                         style: const TextStyle(color: Colors.white),
                         decoration: const InputDecoration(
-                            labelText: "Amount", prefixText: "₹"), // <<< MODIFIED
+                            labelText: "Amount", prefixText: "₹"),
                         keyboardType:
                         const TextInputType.numberWithOptions(decimal: true),
                         validator: (v) => (v == null ||
@@ -338,7 +338,7 @@ class _WalletScreenState extends State<WalletScreen>
         if (user.gold < 0) user.gold = 0;
         if (user.exp < 0) user.exp = 0;
 
-        // --- NEW: De-leveling logic ---
+        // --- De-leveling logic ---
         while (user.exp < 0 && user.level > 1) {
           final prevLevelExp = (100 * pow(user.level - 1, 1.5)).toDouble();
           user.level--;
@@ -381,8 +381,6 @@ class _WalletScreenState extends State<WalletScreen>
       }
     }
   }
-
-  // --- vvv ALL CODE BELOW IS NEW OR HEAVILY MODIFIED vvv ---
 
   @override
   Widget build(BuildContext context) {
@@ -470,11 +468,11 @@ class _WalletScreenState extends State<WalletScreen>
           ),
           segments: const [
             ButtonSegment<ExpenseFilter>(
-                value: ExpenseFilter.week, label: Text('Week')),
+                value: ExpenseFilter.sevenDays, label: Text('7D')), // <<< MODIFIED
             ButtonSegment<ExpenseFilter>(
-                value: ExpenseFilter.month, label: Text('Month')),
+                value: ExpenseFilter.thirtyDays, label: Text('30D')), // <<< MODIFIED
             ButtonSegment<ExpenseFilter>(
-                value: ExpenseFilter.threeMonth, label: Text('12W')), // <<< MODIFIED
+                value: ExpenseFilter.threeMonth, label: Text('12W')),
             ButtonSegment<ExpenseFilter>(
                 value: ExpenseFilter.sixMonth, label: Text('6M')),
             ButtonSegment<ExpenseFilter>(
@@ -491,22 +489,20 @@ class _WalletScreenState extends State<WalletScreen>
     );
   }
 
-  // --- NEW: Gets the correct date range based on the filter ---
+  // --- UPDATED: Gets the correct date range based on the filter ---
   (DateTime, DateTime) _getDateRange() {
     final now = DateTime.now();
     switch (_selectedFilter) {
-      case ExpenseFilter.week:
-      // Current week (Monday to Sunday)
-        final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
-        final endOfWeek = startOfWeek.add(const Duration(days: 6, hours: 23, minutes: 59, seconds: 59));
-        return (DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day), endOfWeek);
-      case ExpenseFilter.month:
-      // Current calendar month
-        final startOfMonth = DateTime(now.year, now.month, 1);
-        final endOfMonth = DateTime(now.year, now.month + 1, 0, 23, 59, 59); // 0th day of next month is last day of current
-        return (startOfMonth, endOfMonth);
+      case ExpenseFilter.sevenDays: // <<< MODIFIED
+      // Last 7 days (rolling)
+        final startDate = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 6));
+        return (startDate, now);
+      case ExpenseFilter.thirtyDays: // <<< MODIFIED
+      // Last 30 days (rolling)
+        final startDate = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 29));
+        return (startDate, now);
       case ExpenseFilter.threeMonth:
-        return (now.subtract(const Duration(days: 84)), now); // <<< MODIFIED (12 * 7 = 84)
+        return (now.subtract(const Duration(days: 84)), now);
       case ExpenseFilter.sixMonth:
         return (now.subtract(const Duration(days: 180)), now);
       case ExpenseFilter.year:
@@ -517,15 +513,15 @@ class _WalletScreenState extends State<WalletScreen>
     }
   }
 
-  // --- NEW: Gets the correct title for the header ---
+  // --- UPDATED: Gets the correct title for the header ---
   String _getHeaderTitle() {
     switch (_selectedFilter) {
-      case ExpenseFilter.week:
-        return 'THIS WEEK';
-      case ExpenseFilter.month:
-        return DateFormat('MMMM yyyy').format(DateTime.now()).toUpperCase();
+      case ExpenseFilter.sevenDays:
+        return 'LAST 7 DAYS'; // <<< MODIFIED
+      case ExpenseFilter.thirtyDays:
+        return 'LAST 30 DAYS'; // <<< MODIFIED
       case ExpenseFilter.threeMonth:
-        return 'LAST 12 WEEKS'; // <<< MODIFIED
+        return 'LAST 12 WEEKS';
       case ExpenseFilter.sixMonth:
         return 'LAST 6 MONTHS';
       case ExpenseFilter.year:
@@ -586,7 +582,7 @@ class _WalletScreenState extends State<WalletScreen>
 
     return Column(
       children: [
-        // --- NEW: Header inspired by screenshots ---
+        // --- Header ---
         Container(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
           color: const Color(0xFF16213E),
@@ -598,7 +594,7 @@ class _WalletScreenState extends State<WalletScreen>
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
                       letterSpacing: 1.1)),
-              Text("Σ -₹${totalExpense.toStringAsFixed(2)}", // <<< MODIFIED
+              Text("Σ -₹${totalExpense.toStringAsFixed(2)}",
                   style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 18,
@@ -628,7 +624,7 @@ class _WalletScreenState extends State<WalletScreen>
                             style: const TextStyle(
                                 color: Colors.grey,
                                 fontWeight: FontWeight.bold)),
-                        Text("Σ -₹${dailyTotal.toStringAsFixed(2)}", // <<< MODIFIED
+                        Text("Σ -₹${dailyTotal.toStringAsFixed(2)}",
                             style: const TextStyle(color: Colors.grey)),
                       ],
                     ),
@@ -645,7 +641,7 @@ class _WalletScreenState extends State<WalletScreen>
     );
   }
 
-  // --- NEW: Stats View with Pie Chart ---
+  // --- Stats View with Pie Chart ---
   Widget _buildStatsView(List<Expense> expenses, double totalExpense) {
     if (expenses.isEmpty) {
       return const Center(
@@ -694,7 +690,7 @@ class _WalletScreenState extends State<WalletScreen>
                             letterSpacing: 1.1)),
                     const SizedBox(height: 8),
                     Text(
-                      "-₹${totalExpense.toStringAsFixed(2)}", // <<< MODIFIED
+                      "-₹${totalExpense.toStringAsFixed(2)}",
                       style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 32,
@@ -784,7 +780,7 @@ class _WalletScreenState extends State<WalletScreen>
           const SizedBox(width: 16),
           SizedBox(
             width: 80,
-            child: Text("-₹${amount.toStringAsFixed(2)}", // <<< MODIFIED
+            child: Text("-₹${amount.toStringAsFixed(2)}",
                 textAlign: TextAlign.end,
                 style: const TextStyle(color: Colors.white70, fontSize: 14)),
           ),
@@ -812,15 +808,15 @@ class _WalletScreenState extends State<WalletScreen>
       if (dayKey == yesterday) return 'Yesterday';
 
       switch (_selectedFilter) {
-        case ExpenseFilter.week:
+        case ExpenseFilter.sevenDays: // <<< MODIFIED
           return DateFormat.yMMMd().format(date); // e.g., "Oct 31, 2025"
 
-        case ExpenseFilter.month: // Group by Week
-        case ExpenseFilter.threeMonth: // 12W filter, group by Week
+        case ExpenseFilter.thirtyDays: // <<< MODIFIED
+        case ExpenseFilter.threeMonth:
           return 'WEEK ${weekNumber(date)}'; // e.g., "WEEK 45"
 
-        case ExpenseFilter.sixMonth: // 6M filter, group by Month
-        case ExpenseFilter.year: // Group by Month
+        case ExpenseFilter.sixMonth:
+        case ExpenseFilter.year:
           return DateFormat('MMMM yyyy').format(date).toUpperCase(); // e.g., "NOVEMBER 2025"
       }
     }
@@ -865,7 +861,7 @@ class _WalletScreenState extends State<WalletScreen>
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text(
-              "-₹${expense.amount.toStringAsFixed(2)}", // <<< MODIFIED
+              "-₹${expense.amount.toStringAsFixed(2)}",
               style: const TextStyle(
                   color: Colors.red, fontWeight: FontWeight.bold, fontSize: 16),
             ),
