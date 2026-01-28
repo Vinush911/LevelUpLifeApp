@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/diary_entry.dart';
-// --- NEW IMPORTS ---
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:permission_handler/permission_handler.dart';
 
 class EditDiaryEntryScreen extends StatefulWidget {
   final String uid;
-  final DiaryEntry? entry; // Null if creating a new entry
+  final DiaryEntry? entry;
 
-  const EditDiaryEntryScreen({super.key, required this.uid, this.entry});
+  const EditDiaryEntryScreen({
+    super.key,
+    required this.uid,
+    this.entry,
+  });
 
   @override
   State<EditDiaryEntryScreen> createState() => _EditDiaryEntryScreenState();
@@ -19,51 +22,97 @@ class _EditDiaryEntryScreenState extends State<EditDiaryEntryScreen> {
   final _contentController = TextEditingController();
   bool _isLoading = false;
 
-  // --- NEW: Speech-to-Text State ---
+  // Speech-to-text
   late stt.SpeechToText _speech;
-  bool _isListening = false;
-  String _textBuffer = ''; // To hold text while listening
   bool _speechAvailable = false;
+  bool _isListening = false;
   PermissionStatus _permissionStatus = PermissionStatus.denied;
+
+  String _dictationBuffer = '';
+  bool _autoRestart = true;
+
 
   @override
   void initState() {
     super.initState();
+
     if (widget.entry != null) {
       _contentController.text = widget.entry!.content;
     }
+
     _speech = stt.SpeechToText();
-    _requestPermissionAndInitSpeech();
+    _initSpeech();
   }
 
-  // --- NEW: Request permission and initialize speech ---
-  Future<void> _requestPermissionAndInitSpeech() async {
+  Future<void> _initSpeech() async {
     _permissionStatus = await Permission.microphone.request();
-    if (_permissionStatus == PermissionStatus.granted) {
-      bool available = await _speech.initialize(
-        onStatus: (val) => debugPrint('onStatus: $val'),
-        onError: (val) => debugPrint('onError: $val'),
-      );
-      if (mounted) {
-        setState(() => _speechAvailable = available);
-      }
-    } else {
-      debugPrint("Microphone permission denied");
+
+    if (_permissionStatus != PermissionStatus.granted) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Microphone permission is required for voice input.")),
+          const SnackBar(content: Text("Microphone permission required")),
         );
       }
+      return;
     }
-  }
 
+    _speechAvailable = await _speech.initialize(
+      onStatus: (status) {
+        if (status == 'done' && _isListening && _autoRestart) {
+          _speech.stop();
+          _listen(); // 🔁 restart automatically
+        }
+      },
+      onError: (error) => debugPrint("Speech error: $error"),
+    );
+
+
+    if (mounted) setState(() {});
+  }
 
   @override
   void dispose() {
+    _speech.stop();
     _contentController.dispose();
-    _speech.stop(); // Ensure speech is stopped when screen is disposed
     super.dispose();
   }
+
+  void _listen() {
+    if (!_speechAvailable || _permissionStatus != PermissionStatus.granted) return;
+
+    if (!_isListening) {
+      setState(() => _isListening = true);
+
+      _autoRestart = true;
+      _dictationBuffer = _contentController.text;
+
+      _speech.listen(
+        listenFor: const Duration(minutes: 5),
+        pauseFor: const Duration(seconds: 2),
+        partialResults: true,
+        cancelOnError: true,
+        listenMode: stt.ListenMode.dictation,
+        onResult: (val) {
+          if (!val.finalResult) return;
+
+          setState(() {
+            _dictationBuffer =
+                (_dictationBuffer + ' ' + val.recognizedWords).trim();
+
+            _contentController.text = _dictationBuffer;
+            _contentController.selection = TextSelection.fromPosition(
+              TextPosition(offset: _contentController.text.length),
+            );
+          });
+        },
+      );
+    } else {
+      _autoRestart = false;
+      setState(() => _isListening = false);
+      _speech.stop();
+    }
+  }
+
 
   Future<void> _saveEntry() async {
     final content = _contentController.text.trim();
@@ -71,29 +120,32 @@ class _EditDiaryEntryScreenState extends State<EditDiaryEntryScreen> {
 
     setState(() => _isLoading = true);
 
-    final firestore = FirebaseFirestore.instance;
-    final collectionRef = firestore.collection('users').doc(widget.uid).collection('diary_entries');
+    final diaryRef = FirebaseFirestore.instance
+        .collection('users')
+        .doc(widget.uid)
+        .collection('diary');
+
+    final now = Timestamp.now();
 
     try {
       if (widget.entry == null) {
-        // Create new entry
-        await collectionRef.add({
+        await diaryRef.add({
           'content': content,
-          'timestamp': Timestamp.now(),
+          'createdAt': now,
+          'lastModified': now,
         });
       } else {
-        // Update existing entry
-        await collectionRef.doc(widget.entry!.id).update({
+        await diaryRef.doc(widget.entry!.id).update({
           'content': content,
-          'timestamp': Timestamp.now(), // Optionally update timestamp on edit
+          'lastModified': now,
         });
       }
+
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      debugPrint("Error saving diary entry: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error saving entry: $e"), backgroundColor: Colors.red),
+          SnackBar(content: Text("Error saving diary entry: $e")),
         );
       }
     } finally {
@@ -101,64 +153,74 @@ class _EditDiaryEntryScreenState extends State<EditDiaryEntryScreen> {
     }
   }
 
-  // --- NEW: Speech control methods ---
-  void _listen() async {
-    if (!_speechAvailable || _permissionStatus != PermissionStatus.granted) {
-      _requestPermissionAndInitSpeech(); // Try again if not ready
-      return;
-    }
-    if (!_isListening) {
-      bool available = await _speech.initialize(); // Re-initialize just in case
-      if (available) {
-        final currentCursorPos = _contentController.selection.baseOffset;
-        _textBuffer = _contentController.text; // Store current text
+  Future<void> _deleteEntry() async {
+    if (widget.entry == null) return;
 
-        setState(() => _isListening = true);
-        _speech.listen(
-          onResult: (val) => setState(() {
-            // Insert recognized words at the cursor position
-            final recognizedWords = val.recognizedWords;
-            if (recognizedWords.isNotEmpty) {
-              // Get text before and after cursor
-              final textBeforeCursor = currentCursorPos >= 0 ? _textBuffer.substring(0, currentCursorPos) : '';
-              final textAfterCursor = currentCursorPos >= 0 && currentCursorPos < _textBuffer.length ? _textBuffer.substring(currentCursorPos) : '';
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Delete Diary Entry"),
+        content: const Text("Are you sure you want to delete this entry?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              "Delete",
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
 
-              // Combine parts with new words
-              _contentController.text = '$textBeforeCursor$recognizedWords $textAfterCursor';
+    if (confirm != true) return;
 
-              // Move cursor to the end of inserted text
-              _contentController.selection = TextSelection.fromPosition(
-                  TextPosition(offset: currentCursorPos + recognizedWords.length + 1) // +1 for the space
-              );
-              // Update buffer for subsequent recognitions in this session
-              _textBuffer = _contentController.text;
-            }
-          }),
-        );
-      }
-    } else {
-      setState(() => _isListening = false);
-      _speech.stop();
+    setState(() => _isLoading = true);
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.uid)
+          .collection('diary')
+          .doc(widget.entry!.id)
+          .delete();
+
+      if (mounted) Navigator.pop(context);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.entry == null ? "New Diary Entry" : "Edit Entry"),
+        title: Text(widget.entry == null ? "New Diary Entry" : "Edit Diary Entry"),
         actions: [
+          if (widget.entry != null)
+            IconButton(
+              icon: const Icon(Icons.delete_outline),
+              onPressed: _isLoading ? null : _deleteEntry,
+            ),
           IconButton(
-            icon: _isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.save),
+            icon: _isLoading
+                ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+                : const Icon(Icons.save),
             onPressed: _isLoading ? null : _saveEntry,
-            tooltip: "Save Entry",
           ),
         ],
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column( // Use Column to add button below TextField
+        padding: const EdgeInsets.all(16),
+        child: Column(
           children: [
             Expanded(
               child: TextField(
@@ -167,21 +229,18 @@ class _EditDiaryEntryScreenState extends State<EditDiaryEntryScreen> {
                 expands: true,
                 keyboardType: TextInputType.multiline,
                 decoration: const InputDecoration(
-                  hintText: "Write about your day...",
+                  hintText: "Write your diary entry...",
                   border: InputBorder.none,
                 ),
-                autofocus: true,
               ),
             ),
-            // --- NEW: Microphone Button ---
-            Padding(
-              padding: const EdgeInsets.only(top: 8.0),
-              child: IconButton(
-                icon: Icon(_isListening ? Icons.mic_off : Icons.mic),
-                color: _isListening ? Colors.redAccent : Theme.of(context).iconTheme.color,
-                tooltip: _isListening ? 'Stop Listening' : 'Start Voice Input',
-                onPressed: _listen,
-              ),
+            IconButton(
+              iconSize: 32,
+              icon: Icon(_isListening ? Icons.mic_off : Icons.mic),
+              color: _isListening
+                  ? Colors.red
+                  : Theme.of(context).colorScheme.secondary,
+              onPressed: _listen,
             ),
           ],
         ),
@@ -189,4 +248,3 @@ class _EditDiaryEntryScreenState extends State<EditDiaryEntryScreen> {
     );
   }
 }
-
