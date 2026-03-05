@@ -115,6 +115,13 @@ class _EditDiaryEntryScreenState extends State<EditDiaryEntryScreen> {
 
 
   Future<void> _saveEntry() async {
+    // STOP voice input before saving
+    if (_isListening) {
+      _autoRestart = false;
+      _speech.stop();
+      _isListening = false;
+    }
+
     final content = _contentController.text.trim();
     if (content.isEmpty) return;
 
@@ -123,35 +130,42 @@ class _EditDiaryEntryScreenState extends State<EditDiaryEntryScreen> {
     final diaryRef = FirebaseFirestore.instance
         .collection('users')
         .doc(widget.uid)
-        .collection('diary');
+        .collection('diary_entries');
 
     final now = Timestamp.now();
 
     try {
       if (widget.entry == null) {
+        // NEW ENTRY
         await diaryRef.add({
           'content': content,
-          'createdAt': now,
+          'timestamp': now,
           'lastModified': now,
         });
+        // ensures queued writes are registered
+        await FirebaseFirestore.instance.waitForPendingWrites();
       } else {
+        // UPDATE ENTRY
         await diaryRef.doc(widget.entry!.id).update({
           'content': content,
           'lastModified': now,
         });
       }
 
-      if (mounted) Navigator.pop(context);
+      if (!mounted) return;
+
+      Navigator.pop(context); // success
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error saving diary entry: $e")),
-        );
-      }
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Failed to save diary entry")),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
 
   Future<void> _deleteEntry() async {
     if (widget.entry == null) return;
@@ -185,7 +199,7 @@ class _EditDiaryEntryScreenState extends State<EditDiaryEntryScreen> {
       await FirebaseFirestore.instance
           .collection('users')
           .doc(widget.uid)
-          .collection('diary')
+          .collection('diary_entries')
           .doc(widget.entry!.id)
           .delete();
 

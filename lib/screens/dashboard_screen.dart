@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../models/user.dart';
 import '../models/avatars.dart';
 import 'daily_rewards_screen.dart';
+import 'ledger_screen.dart'; // 1️⃣ Imported the new Ledger Screen
 import 'dart:async';
 import 'dart:math';
 
@@ -238,10 +239,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ],
             ),
-            // --- NEW: Moved currency chips to a separate row ---
+            // --- FIXED: Replaced Row with Wrap to prevent RenderFlex overflow ---
             const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 8.0, // Space between items horizontally
+              runSpacing: 8.0, // Space between items vertically if they wrap
               children: [
                 GestureDetector(
                   onTap: () => _showEnergyDialog(context),
@@ -252,14 +255,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     labelStyle: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
                   ),
                 ),
-                const SizedBox(width: 8),
-                Chip(
+                ActionChip(
                   avatar: const Icon(Icons.monetization_on, color: Colors.black, size: 18),
                   label: Text(
                     user.gold.toString(),
                     style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
                   ),
                   backgroundColor: Colors.amber,
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const LedgerScreen()),
+                    );
+                  },
                 ),
               ],
             ),
@@ -502,4 +510,3 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 }
-
