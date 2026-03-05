@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // --- NEW: Import Firestore ---
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart'; // 1️⃣ Import Provider
 
 import 'firebase_options.dart';
 import 'screens/home_screen.dart';
 import 'screens/auth_screen.dart';
-import 'services/notification_service.dart'; // <<<--- ADD THIS IMPORT
+import 'screens/ledger_screen.dart'; // 🪙 Added Ledger Screen import
+import 'services/notification_service.dart';
+import 'utils/firestore_sync_notifier.dart';
+import 'package:timezone/data/latest.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,13 +28,24 @@ void main() async {
     persistenceEnabled: true,
   );
 
-  // 3️⃣ Initialize NotificationService before using it
-  await NotificationService.init();
+  // 3️⃣ Initialize NotificationService
+  // 🔥 INITIALIZE NOTIFICATIONS BEFORE runApp
+  await NotificationService.instance.init();
 
-  // 4️⃣ Ask user for notification permission (optional but recommended)
-  await NotificationService.requestPermissions();
+  // 4️⃣ Ask user for notification permission
+  await NotificationService.instance.requestPermissions();
 
-  runApp(const MyApp());
+  // ✅ Timezone initialization (REQUIRED)
+  tz.initializeTimeZones();
+  tz.setLocalLocation(tz.local);
+
+  // 5️⃣ Wrap MyApp with ChangeNotifierProvider for global sync state
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => FirestoreSyncNotifier(),
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -37,7 +55,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'QuestForge', // --- MODIFIED: App name updated ---
+      title: 'QuestForge',
       theme: ThemeData(
         brightness: Brightness.dark,
         primaryColor: const Color(0xFF0F3460),
@@ -48,8 +66,12 @@ class MyApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
+      navigatorKey: navigatorKey,
+      // 🗺️ ADDED ROUTES FOR PROPER ARCHITECTURE
+      routes: {
+        '/ledger': (context) => const LedgerScreen(),
+      },
       home: StreamBuilder<User?>(
-        // Listen to authentication state changes.
         stream: FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -57,11 +79,9 @@ class MyApp extends StatelessWidget {
               body: Center(child: CircularProgressIndicator()),
             );
           }
-          // If the user is logged in, show the HomeScreen.
           if (snapshot.hasData && snapshot.data != null) {
             return HomeScreen(uid: snapshot.data!.uid);
           }
-          // Otherwise, show the AuthScreen to log in or sign up.
           return const AuthScreen();
         },
       ),

@@ -17,6 +17,7 @@ import 'epic_quests_screen.dart';
 import 'adventurers_log_screen.dart';
 import 'admin_panel_screen.dart';
 import 'wallet_screen.dart';
+import 'ledger_screen.dart'; // 🪙 NEW: Imported Ledger Screen
 // --- NEW: Import new screens ---
 import 'diary_screen.dart';
 import 'notes_screen.dart';
@@ -112,6 +113,8 @@ class HomeScreen extends StatelessWidget {
                 _buildDrawerItem(context, icon: Icons.person, title: 'Character Sheet', screen: ProfileScreen(uid: uid)),
                 _buildDrawerItem(context, icon: Icons.inventory_2, title: 'Inventory', screen: InventoryScreen(uid: uid)),
                 _buildDrawerItem(context, icon: Icons.wallet, title: 'Wallet', screen: WalletScreen(uid: uid)),
+                // 🪙 ADDED LEDGER HERE
+                _buildDrawerItem(context, icon: Icons.menu_book, title: "Merchant's Ledger", screen: const LedgerScreen()),
                 _buildDrawerItem(context, icon: Icons.history, title: "Adventurer's Log", screen: AdventurersLogScreen(uid: uid)),
                 _buildDrawerItem(context, icon: Icons.people, title: 'Friends', screen: FriendsScreen(uid: uid)),
                 _buildDrawerItem(context, icon: Icons.shield, title: 'Guilds', screen: GuildsScreen(uid: uid)),

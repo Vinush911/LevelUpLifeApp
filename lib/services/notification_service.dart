@@ -1,171 +1,158 @@
-import 'package:flutter/material.dart'; // For TimeOfDay
+import 'dart:convert';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter_timezone/flutter_timezone.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:timezone/data/latest_all.dart' as tz;
+import 'package:timezone/data/latest.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
-import 'dart:math';
 
+import '../main.dart'; // navigatorKey
 import '../models/timetable_entry.dart';
+import '../screens/notification_test_screen.dart';
 
 class NotificationService {
-  static final FlutterLocalNotificationsPlugin _flutterLocalNotificationsPlugin =
+  NotificationService._();
+  static final NotificationService instance = NotificationService._();
+
+  final FlutterLocalNotificationsPlugin _plugin =
   FlutterLocalNotificationsPlugin();
 
-  static const List<String> _dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  /// MUST be called ONCE before runApp
+  Future<void> init() async {
+    await _initTimezone();
 
-  static Future<void> init() async {
-    // Wrap the entire initialization in a try/catch block
-    try {
-      // 1. Initialize Timezone Database
-      tz.initializeTimeZones(); // This is synchronous (no 'await')
+    const androidSettings =
+    AndroidInitializationSettings('@mipmap/ic_launcher');
 
-      // 2. Get local timezone
-      print("NotificationService: Getting local timezone...");
-      final localTimezone = await FlutterTimezone.getLocalTimezone();
-      print("NotificationService: Found local timezone: ${localTimezone.toString()}");
+    const initSettings =
+    InitializationSettings(android: androidSettings);
 
-      // 3. Set local timezone
-      tz.setLocalLocation(tz.getLocation(localTimezone.toString()));
-      print("NotificationService: Timezone location set successfully.");
+    await _plugin.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: _onNotificationTap,
+    );
 
-      // 4. Initialize Notification Plugin Settings
-      const AndroidInitializationSettings initializationSettingsAndroid =
-      AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidChannel = AndroidNotificationChannel(
+      'default_channel',
+      'Default Notifications',
+      description: 'App notifications',
+      importance: Importance.high,
+    );
 
-      const DarwinInitializationSettings initializationSettingsIOS =
-      DarwinInitializationSettings(
-        requestAlertPermission: true,
-        requestBadgePermission: true,
-        requestSoundPermission: true,
-      );
+    final androidPlugin =
+    _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
 
-      const InitializationSettings initializationSettings = InitializationSettings(
-        android: initializationSettingsAndroid,
-        iOS: initializationSettingsIOS,
-      );
-
-      await _flutterLocalNotificationsPlugin.initialize(initializationSettings);
-      print("NotificationService: Initialization complete.");
-
-    } catch (e) {
-      // THIS WILL SHOW US THE REAL ERROR
-      print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-      print("!!! ERROR INITIALIZING NOTIFICATION SERVICE: $e");
-      print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-    }
+    await androidPlugin?.createNotificationChannel(androidChannel);
   }
 
-  static Future<void> requestPermissions() async {
-    // For Android 13+
-    if (await Permission.notification.isDenied) {
-      await Permission.notification.request();
-    }
+  /// 🔥 REQUIRED timezone initialization
+  Future<void> _initTimezone() async {
+    tzdata.initializeTimeZones();
+    tz.setLocalLocation(tz.local);
+  }
 
-    // 🔹 NEW: Request exact alarm permission for Android 12+
-    if (await Permission.scheduleExactAlarm.isDenied) {
-      await Permission.scheduleExactAlarm.request();
-    }
 
-    // For iOS
-    await _flutterLocalNotificationsPlugin
-        .resolvePlatformSpecificImplementation<
-        IOSFlutterLocalNotificationsPlugin>()
-        ?.requestPermissions(
-      alert: true,
-      badge: true,
-      sound: true,
+
+  /// Android 13+ permission
+  Future<void> requestPermissions() async {
+    final androidPlugin =
+    _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+
+    await androidPlugin?.requestNotificationsPermission();
+  }
+
+  /// 🔔 Notification tap handler
+  static void _onNotificationTap(NotificationResponse response) {
+    navigatorKey.currentState?.push(
+      MaterialPageRoute(
+        builder: (_) => const NotificationTestScreen(),
+      ),
     );
   }
 
-  static Future<int> scheduleTimetableEntry(TimetableEntry entry) async {
-    // 1. Cancel any old notification this entry had
+  /// Test notification
+  Future<void> showTestNotification() async {
+    const androidDetails = AndroidNotificationDetails(
+      'default_channel',
+      'Default Notifications',
+      importance: Importance.high,
+      priority: Priority.high,
+    );
+
+    const notificationDetails =
+    NotificationDetails(android: androidDetails);
+
+    await _plugin.show(
+      0,
+      'Test Notification',
+      'Tap to open screen',
+      notificationDetails,
+      payload: jsonEncode({'type': 'test'}),
+    );
+  }
+
+  /// Cancel notification
+  Future<void> cancelNotification(int notificationId) async {
+    await _plugin.cancel(notificationId);
+  }
+
+  /// Timetable notification (stub – safe)
+  Future<int?> scheduleTimetableEntry(TimetableEntry entry) async {
     if (entry.notificationId != null) {
       await cancelNotification(entry.notificationId!);
     }
 
-    if (!entry.reminderEnabled) {
-      return 0;
-    }
+    final int newNotificationId =
+    DateTime.now().millisecondsSinceEpoch.remainder(100000);
 
-    // 2. Generate a new unique ID for this notification
-    final newNotificationId = Random().nextInt(2147483647);
-
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'timetable_channel',
-      'Timetable Reminders',
-      channelDescription: 'Reminders for scheduled timetable entries',
-      importance: Importance.max,
-      priority: Priority.high,
-      playSound: true,
-    );
-
-    // --- vvv THIS IS THE FIX vvv ---
-    // The iOS setting goes INSIDE the DarwinNotificationDetails
-    const NotificationDetails notificationDetails =
-        NotificationDetails(
-            android: androidDetails,
-            iOS: DarwinNotificationDetails(
-              presentSound: true,
-              // The old uiLocalNotificationDateInterpretation parameter
-              // is no longer needed in this version of the package.
-            )
-        );
-    // --- ^^^ THIS IS THE FIX ^^^ ---
-
-    // 3. Schedule a notification for each selected day
-    for (String day in entry.repeatDays) {
-      final tz.TZDateTime scheduledTime = _nextInstanceOfDay(
-        day,
-        entry.startTime,
-        entry.reminderTimeOffset,
-      );
-
-      await _flutterLocalNotificationsPlugin.zonedSchedule(
-        newNotificationId + _dayLabels.indexOf(day), // Create a unique ID per day
-        entry.title,
-        'Your scheduled event is starting in ${entry.reminderTimeOffset} minutes.',
-        scheduledTime,
-        notificationDetails,
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        // We REMOVED the bad line from here
-        matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-      );
-    }
-
-    // 4. Return the *base* ID we used.
     return newNotificationId;
   }
 
-  static Future<void> cancelNotification(int baseNotificationId) async {
-    // Cancel all 7 potential notifications (Mon-Sun) associated with this base ID
-    for (int i = 0; i < 7; i++) {
-      await _flutterLocalNotificationsPlugin.cancel(baseNotificationId + i);
-    }
-  }
+  /// ✅ DAILY DIARY REMINDER (CORRECT)
+  Future<int> scheduleDailyDiaryReminder({
+    required int hour,
+    required int minute,
+  }) async {
+    final int notificationId =
+    DateTime.now().millisecondsSinceEpoch.remainder(100000);
 
-  static tz.TZDateTime _nextInstanceOfDay(String day, TimeOfDay time, int offsetMinutes) {
-    final int targetWeekday = _dayLabels.indexOf(day) + 1; // 1 = Monday, 7 = Sunday
+    final tz.TZDateTime now = tz.TZDateTime.now(tz.local);
 
-    tz.TZDateTime now = tz.TZDateTime.now(tz.local);
-
-    final reminderTime = time.hour * 60 + time.minute - offsetMinutes;
-    final int reminderHour = reminderTime ~/ 60;
-    final int reminderMinute = reminderTime % 60;
-
-    tz.TZDateTime scheduledDate = tz.TZDateTime(
+    tz.TZDateTime scheduledTime = tz.TZDateTime(
       tz.local,
       now.year,
       now.month,
       now.day,
-      reminderHour,
-      reminderMinute,
+      hour,
+      minute,
     );
 
-    while (scheduledDate.weekday != targetWeekday || scheduledDate.isBefore(now)) {
-      scheduledDate = scheduledDate.add(const Duration(days: 1));
+    if (scheduledTime.isBefore(now)) {
+      scheduledTime = scheduledTime.add(const Duration(days: 1));
     }
 
-    return scheduledDate;
+    const androidDetails = AndroidNotificationDetails(
+      'default_channel',
+      'Default Notifications',
+      importance: Importance.high,
+      priority: Priority.high,
+    );
+
+    const notificationDetails =
+    NotificationDetails(android: androidDetails);
+
+    await _plugin.zonedSchedule(
+      notificationId,
+      'Diary Reminder',
+      'Don\'t forget to write today ✍️',
+      scheduledTime,
+      notificationDetails,
+      androidScheduleMode:
+      AndroidScheduleMode.exactAllowWhileIdle,
+
+      matchDateTimeComponents: DateTimeComponents.time,
+    );
+
+    return notificationId;
   }
 }

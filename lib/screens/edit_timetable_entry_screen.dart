@@ -119,7 +119,7 @@ class _EditTimetableEntryScreenState extends State<EditTimetableEntryScreen> {
 
       // Schedule (or cancel) the notification
       // This will cancel the old one and schedule a new one if enabled.
-      final newNotificationId = await NotificationService.scheduleTimetableEntry(tempEntry);
+      final newNotificationId = await NotificationService.instance.scheduleTimetableEntry(tempEntry);
 
       // Now, build the final data map to save to Firestore
       final entryData = {

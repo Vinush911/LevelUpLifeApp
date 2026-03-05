@@ -60,7 +60,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
       try {
         // 1. Cancel the notification first
         if (entry.notificationId != null) {
-          await NotificationService.cancelNotification(entry.notificationId!);
+          await NotificationService.instance.cancelNotification(entry.notificationId!);
         }
 
         // 2. Delete the document from Firestore
