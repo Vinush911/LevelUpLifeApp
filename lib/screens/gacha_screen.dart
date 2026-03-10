@@ -17,7 +17,7 @@ class _GachaScreenState extends State<GachaScreen> with TickerProviderStateMixin
   bool _isOpening = false;
   late AnimationController _shakeController;
   late Animation<double> _shakeAnimation;
-  late AnimationController _particleController; // For background animation
+  late AnimationController _particleController;
 
   Map<String, dynamic>? _winningReward;
   List<Map<String, dynamic>>? _winningMultiRewards;
@@ -101,32 +101,53 @@ class _GachaScreenState extends State<GachaScreen> with TickerProviderStateMixin
       builder: (context) => Dialog(
         backgroundColor: Colors.transparent,
         child: Container(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(32),
           decoration: BoxDecoration(
-            color: const Color(0xFF16213E),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: glowColor, width: 2),
-            boxShadow: [BoxShadow(color: glowColor.withOpacity(0.7), blurRadius: 15, spreadRadius: 5)],
+            color: const Color(0xFF16213E).withOpacity(0.95),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: glowColor.withOpacity(0.8), width: 2),
+            boxShadow: [BoxShadow(color: glowColor.withOpacity(0.5), blurRadius: 30, spreadRadius: 5)],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text("You won: $rewardName!", textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: glowColor)),
-              const SizedBox(height: 12),
-              Text(rewardMessage, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16, color: Colors.white70)),
-              const SizedBox(height: 24),
+              Icon(Icons.auto_awesome, color: glowColor, size: 48),
+              const SizedBox(height: 16),
+              Text(
+                  "You won:\n$rewardName",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: glowColor, letterSpacing: 1.2, height: 1.3)
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(rewardMessage, textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, color: Colors.white70)),
+              ),
+              const SizedBox(height: 32),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  TextButton(onPressed: () => Navigator.pop(context), child: const Text("Close")),
-                  const SizedBox(width: 12),
+                  TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text("Close", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold))
+                  ),
+                  const SizedBox(width: 16),
                   ElevatedButton(
                     onPressed: canAffordAnother ? () {
                       Navigator.pop(context);
                       _openTreasureChest();
                     } : null,
-                    style: ElevatedButton.styleFrom(backgroundColor: glowColor),
-                    child: const Text("Pull Again (500G)"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: glowColor,
+                      foregroundColor: Colors.black,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    ),
+                    child: const Text("Pull Again", style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
@@ -141,29 +162,58 @@ class _GachaScreenState extends State<GachaScreen> with TickerProviderStateMixin
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("10-Pull Results"),
+        backgroundColor: const Color(0xFF16213E),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+          side: BorderSide(color: Colors.purpleAccent.withOpacity(0.5), width: 1.5),
+        ),
+        title: const Center(
+          child: Text("10-Pull Results", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+        ),
         content: SizedBox(
           width: double.maxFinite,
           child: ListView.builder(
             shrinkWrap: true,
             itemCount: rewards.length,
+            physics: const BouncingScrollPhysics(),
             itemBuilder: (context, index) {
               final reward = rewards[index];
               final rewardName = reward['name'] as String? ?? 'A Prize';
               final rarity = reward['rarity'] as String? ?? 'COMMON';
               final color = _rarityColors[rarity] ?? Colors.grey;
               final message = reward['rewardMessage'] as String? ?? '';
+
               return Card(
-                color: color.withOpacity(0.2),
+                color: const Color(0xFF0F3460).withOpacity(0.5),
+                margin: const EdgeInsets.symmetric(vertical: 4),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: color.withOpacity(0.4)),
+                ),
                 child: ListTile(
-                  title: Text(rewardName, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
-                  subtitle: Text(message, style: TextStyle(color: Colors.grey.shade300)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  leading: Icon(Icons.star, color: color, size: 20),
+                  title: Text(rewardName, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 15)),
+                  subtitle: Text(message, style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
                 ),
               );
             },
           ),
         ),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("Awesome!"))],
+        actions: [
+          Center(
+            child: ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.purpleAccent,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+              ),
+              child: const Text("Awesome!", style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          )
+        ],
       ),
     );
   }
@@ -172,7 +222,12 @@ class _GachaScreenState extends State<GachaScreen> with TickerProviderStateMixin
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("Drop Rates"),
+        backgroundColor: const Color(0xFF16213E),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Colors.purpleAccent.withOpacity(0.5)),
+        ),
+        title: const Text("Drop Rates", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -180,15 +235,41 @@ class _GachaScreenState extends State<GachaScreen> with TickerProviderStateMixin
             ..._dropRates.entries.map((entry) {
               final color = _rarityColors[entry.key] ?? Colors.grey;
               return ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.circle, color: color, size: 16),
                 title: Text(entry.key, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
-                trailing: Text(entry.value, style: const TextStyle(fontSize: 16)),
+                trailing: Text(entry.value, style: const TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
               );
             }),
-            const Divider(height: 20),
-            const Text("A LEGENDARY item is guaranteed within 50 pulls.", style: TextStyle(fontStyle: FontStyle.italic)),
+            const Divider(height: 32, color: Colors.white24),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.amber.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.amber.withOpacity(0.3)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.amber, size: 20),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                        "A LEGENDARY item is guaranteed within 50 pulls.",
+                        style: TextStyle(fontStyle: FontStyle.italic, color: Colors.white70, fontSize: 13)
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("Close"))],
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Close", style: TextStyle(color: Colors.grey))
+          )
+        ],
       ),
     );
   }
@@ -244,7 +325,11 @@ class _GachaScreenState extends State<GachaScreen> with TickerProviderStateMixin
       });
       _startAnimation();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: Colors.red));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.toString()), backgroundColor: Colors.redAccent)
+        );
+      }
       setState(() => _isOpening = false);
     }
   }
@@ -314,7 +399,11 @@ class _GachaScreenState extends State<GachaScreen> with TickerProviderStateMixin
       });
       _startAnimation();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: Colors.red));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.toString()), backgroundColor: Colors.redAccent)
+        );
+      }
       setState(() => _isOpening = false);
     }
   }
@@ -366,9 +455,10 @@ class _GachaScreenState extends State<GachaScreen> with TickerProviderStateMixin
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF1A1A2E),
       appBar: AppBar(
-        title: const Text("Treasure Gacha"),
-        backgroundColor: const Color(0xFF1A1A2E),
+        title: const Text("Summoning Altar", style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+        backgroundColor: const Color(0xFF0F3460),
         elevation: 0,
         actions: [
           StreamBuilder<DocumentSnapshot>(
@@ -378,19 +468,41 @@ class _GachaScreenState extends State<GachaScreen> with TickerProviderStateMixin
               final user = User.fromFirestore(snapshot.data);
               return Padding(
                 padding: const EdgeInsets.only(right: 16.0),
-                child: Chip(
-                  avatar: const Icon(Icons.monetization_on, color: Colors.black, size: 18),
-                  label: Text(user.gold.toString(), style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-                  backgroundColor: Colors.amber,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.amber.withOpacity(0.5)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.monetization_on, color: Colors.amber, size: 18),
+                        const SizedBox(width: 6),
+                        Text(user.gold.toString(), style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15)),
+                      ],
+                    ),
+                  ),
                 ),
               );
             },
           ),
         ],
       ),
-      // --- NEW: Replaced Center with a Stack for background animation ---
       body: Stack(
         children: [
+          // Background Gradient
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFF0F3460), Color(0xFF1A1A2E)],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+            ),
+          ),
           // Animated particle background
           AnimatedBuilder(
             animation: _particleController,
@@ -405,42 +517,82 @@ class _GachaScreenState extends State<GachaScreen> with TickerProviderStateMixin
           Center(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(16.0),
+              physics: const BouncingScrollPhysics(),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   _buildFeaturedItemsCarousel(),
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 50),
+
+                  // Treasure Chest
                   AnimatedBuilder(
                     animation: _shakeAnimation,
-                    builder: (context, child) => Transform.rotate(angle: _isOpening ? _shakeAnimation.value : 0, child: child),
+                    builder: (context, child) => Transform.rotate(
+                        angle: _isOpening ? _shakeAnimation.value : 0,
+                        child: child
+                    ),
                     child: _buildTreasureChest(),
                   ),
-                  const SizedBox(height: 20),
-                  const Text("Open a Treasure Chest!", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white, shadows: [Shadow(blurRadius: 10, color: Colors.black)])),
+
                   const SizedBox(height: 30),
+                  const Text(
+                      "Call Upon The Fates",
+                      style: TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                          letterSpacing: 1.5,
+                          shadows: [Shadow(blurRadius: 15, color: Colors.purpleAccent)]
+                      )
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    "Discover legendary artifacts and untold riches.",
+                    style: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                  ),
+                  const SizedBox(height: 40),
+
                   if (_isOpening)
-                    const CircularProgressIndicator()
+                    const Padding(
+                      padding: EdgeInsets.all(32.0),
+                      child: CircularProgressIndicator(color: Colors.amber),
+                    )
                   else
                     Column(
                       children: [
-                        ElevatedButton(
+                        ElevatedButton.icon(
+                            icon: const Icon(Icons.key),
                             onPressed: _openTreasureChest,
                             style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-                              textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                              backgroundColor: Colors.amber,
+                              foregroundColor: Colors.black,
+                              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              elevation: 8,
+                              shadowColor: Colors.amber.withOpacity(0.5),
                             ),
-                            child: const Text("Open Chest (500G)")
+                            label: const Text("Open Chest (500G)", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.1))
                         ),
-                        const SizedBox(height: 12),
-                        ElevatedButton(
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                            icon: const Icon(Icons.vpn_key),
                             onPressed: _openTenTreasureChests,
                             style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-                              textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                              backgroundColor: Colors.purpleAccent,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              elevation: 8,
+                              shadowColor: Colors.purpleAccent.withOpacity(0.5),
                             ),
-                            child: const Text("Open 10 Chests (5000G)")
+                            label: const Text("Open 10 Chests (5000G)", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.1))
                         ),
-                        TextButton(onPressed: _showDropRatesDialog, child: const Text("View Drop Rates")),
+                        const SizedBox(height: 24),
+                        TextButton.icon(
+                            icon: const Icon(Icons.info_outline, color: Colors.grey, size: 18),
+                            onPressed: _showDropRatesDialog,
+                            label: const Text("View Drop Rates", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, letterSpacing: 1))
+                        ),
                       ],
                     ),
                 ],
@@ -452,44 +604,71 @@ class _GachaScreenState extends State<GachaScreen> with TickerProviderStateMixin
     );
   }
 
-  // --- NEW: Widget for the featured items carousel ---
   Widget _buildFeaturedItemsCarousel() {
     return Column(
       children: [
-        const Text("Featured Rewards", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white70)),
-        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.auto_awesome, color: Colors.amber.shade200, size: 18),
+            const SizedBox(width: 8),
+            const Text(
+                "FEATURED RELICS",
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white70, letterSpacing: 2)
+            ),
+            const SizedBox(width: 8),
+            Icon(Icons.auto_awesome, color: Colors.amber.shade200, size: 18),
+          ],
+        ),
+        const SizedBox(height: 16),
         SizedBox(
-          height: 100,
+          height: 110,
           child: StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('gacha_items')
                 .where('rarity', whereIn: ['RARE', 'LEGENDARY'])
                 .limit(10)
                 .snapshots(),
             builder: (context, snapshot) {
-              if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+              if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.purpleAccent));
               final items = snapshot.data!.docs;
-              if(items.isEmpty) return const Text("No featured items available.", style: TextStyle(color: Colors.grey));
+              if(items.isEmpty) return const Center(child: Text("No featured items available.", style: TextStyle(color: Colors.grey)));
 
               return ListView.separated(
                 scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
                 itemCount: items.length,
-                separatorBuilder: (context, index) => const SizedBox(width: 12),
+                separatorBuilder: (context, index) => const SizedBox(width: 16),
                 itemBuilder: (context, index) {
                   final item = items[index].data() as Map<String, dynamic>;
                   final name = item['name'] as String? ?? 'Item';
                   final rarity = item['rarity'] as String? ?? 'RARE';
                   final color = _rarityColors[rarity] ?? Colors.grey;
+
                   return AspectRatio(
                     aspectRatio: 1,
                     child: Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.3),
-                        borderRadius: BorderRadius.circular(15),
-                        border: Border.all(color: color, width: 2),
+                          color: const Color(0xFF16213E).withOpacity(0.8),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: color.withOpacity(0.6), width: 2),
+                          boxShadow: [
+                            BoxShadow(color: color.withOpacity(0.2), blurRadius: 10, spreadRadius: 1)
+                          ]
                       ),
-                      child: Center(
-                        child: Text(name, textAlign: TextAlign.center, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+                      child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.auto_awesome, color: color, size: 28),
+                            const SizedBox(height: 8),
+                            Text(
+                                name,
+                                textAlign: TextAlign.center,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)
+                            ),
+                          ]
                       ),
                     ),
                   );
@@ -502,28 +681,36 @@ class _GachaScreenState extends State<GachaScreen> with TickerProviderStateMixin
     );
   }
 
-  // --- NEW: Widget for a more creative treasure chest graphic ---
   Widget _buildTreasureChest() {
-    return const Icon(
-      Icons.shield_moon, // Using a different icon for a more fantasy feel
-      size: 120,
-      color: Colors.amber,
-      shadows: [
-        Shadow(
-          color: Colors.yellow,
-          blurRadius: 20,
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        // Glowing aura behind chest
+        Container(
+          width: 100,
+          height: 100,
+          decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(color: Colors.amber.withOpacity(0.3), blurRadius: 50, spreadRadius: 20),
+                BoxShadow(color: Colors.purpleAccent.withOpacity(0.2), blurRadius: 80, spreadRadius: 40),
+              ]
+          ),
         ),
-        Shadow(
-            color: Colors.black,
-            blurRadius: 30,
-            offset: Offset(0, 5)
-        )
+        const Icon(
+          Icons.shield_moon,
+          size: 130,
+          color: Colors.amber,
+          shadows: [
+            Shadow(color: Colors.yellowAccent, blurRadius: 20),
+            Shadow(color: Colors.black, blurRadius: 30, offset: Offset(0, 10))
+          ],
+        ),
       ],
     );
   }
 }
 
-// --- NEW: Custom painter for the animated particle background ---
 class ParticlePainter extends CustomPainter {
   final double progress;
   final List<Particle> particles = [];
@@ -566,6 +753,5 @@ class Particle {
         y = random.nextDouble(),
         radius = random.nextDouble() * 2 + 1,
         speed = random.nextDouble() * 4 + 2,
-        color = [Colors.purpleAccent, Colors.cyanAccent, Colors.white].elementAt(random.nextInt(3));
+        color = [Colors.purpleAccent, Colors.cyanAccent, Colors.amber].elementAt(random.nextInt(3));
 }
-

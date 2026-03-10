@@ -15,7 +15,7 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  // --- NEW: Function to assign a stat point ---
+  // --- Function to assign a stat point ---
   Future<void> _assignStatPoint(String stat) async {
     final firestore = FirebaseFirestore.instance;
     final userRef = firestore.collection('users').doc(widget.uid);
@@ -38,10 +38,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           throw Exception("No unassigned stat points available.");
         }
       });
+      // Play a small sound or give subtle feedback here if desired
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
+          SnackBar(content: Text(e.toString()), backgroundColor: Colors.redAccent),
         );
       }
     }
@@ -51,18 +52,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final bool? confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("Reset Your Character?"),
+        backgroundColor: const Color(0xFF16213E),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Colors.redAccent, width: 2),
+        ),
+        title: const Text("Reset Your Character?", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         content: const Text(
-            "This will reset your level, EXP, gold, items, skills, and stats to their default values. \n\nYour friends list and admin status will NOT be affected. This action cannot be undone."),
+          "This will reset your level, EXP, gold, items, skills, and stats to their default values.\n\nYour friends list and admin status will NOT be affected. This action cannot be undone.",
+          style: TextStyle(color: Colors.white70, height: 1.5),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text("Cancel"),
+            child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text("Reset"),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade900,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text("Reset", style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -118,7 +129,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Character has been reset successfully."),
+            content: Text("Character has been reset successfully.", style: TextStyle(fontWeight: FontWeight.bold)),
             backgroundColor: Colors.green,
           ),
         );
@@ -128,7 +139,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text("An error occurred: $e"),
-            backgroundColor: Colors.red,
+            backgroundColor: Colors.redAccent,
           ),
         );
       }
@@ -140,15 +151,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text("Choose Your Avatar"),
+          backgroundColor: const Color(0xFF16213E),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(color: Colors.purpleAccent.withOpacity(0.5)),
+          ),
+          title: const Text("Choose Your Avatar", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           content: SizedBox(
             width: double.maxFinite,
             child: GridView.builder(
               shrinkWrap: true,
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 4,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
               ),
               itemCount: avatarUrls.length,
               itemBuilder: (context, index) {
@@ -159,10 +175,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         .collection('users')
                         .doc(widget.uid)
                         .update({'avatarUrl': avatarUrl});
-                    Navigator.pop(context);
+                    if (context.mounted) Navigator.pop(context);
                   },
-                  child: CircleAvatar(
-                    backgroundImage: NetworkImage(avatarUrl),
+                  child: Container(
+                    decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.amber.withOpacity(0.6), width: 2),
+                        boxShadow: [
+                          BoxShadow(color: Colors.amber.withOpacity(0.2), blurRadius: 8),
+                        ]
+                    ),
+                    child: CircleAvatar(
+                      backgroundImage: NetworkImage(avatarUrl),
+                      backgroundColor: Colors.purpleAccent.withOpacity(0.2),
+                    ),
                   ),
                 );
               },
@@ -171,7 +197,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text("Cancel"),
+              child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
             )
           ],
         );
@@ -185,27 +211,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
         context: context,
         builder: (context) => AlertDialog(
           backgroundColor: const Color(0xFF16213E),
-          title: const Text("Change Your Name", style: TextStyle(color: Colors.white)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: Colors.purpleAccent.withOpacity(0.5)),
+          ),
+          title: const Text("Change Your Name", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           content: TextField(
             controller: nameController,
             autofocus: true,
             style: const TextStyle(color: Colors.white),
-            decoration: InputDecoration(labelText: "New Name", labelStyle: TextStyle(color: Colors.purple.shade200)),
+            decoration: InputDecoration(
+              labelText: "New Name",
+              labelStyle: TextStyle(color: Colors.grey.shade400),
+              enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.purple.shade200)),
+              focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.purpleAccent)),
+            ),
           ),
           actions: [
             TextButton(
-              child: const Text("Cancel"),
+              child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
               onPressed: () => Navigator.pop(context),
             ),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.purpleAccent),
-              child: const Text("Update"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.purpleAccent,
+                foregroundColor: Colors.black,
+              ),
+              child: const Text("Update", style: TextStyle(fontWeight: FontWeight.bold)),
               onPressed: () async {
                 final newName = nameController.text.trim();
                 if (newName.isNotEmpty && newName != currentName) {
                   await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({'name': newName});
                 }
-                Navigator.pop(context);
+                if (context.mounted) Navigator.pop(context);
               },
             ),
           ],
@@ -215,15 +253,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF1A1A2E),
       appBar: AppBar(
-        title: const Text("Character Sheet"),
+        title: const Text("Character Sheet", style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2)),
         backgroundColor: const Color(0xFF0F3460),
         elevation: 0,
       ),
       body: Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [const Color(0xFF0F3460), const Color(0xFF1A1A2E)],
+            colors: [Color(0xFF0F3460), Color(0xFF1A1A2E)],
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
           ),
@@ -232,7 +271,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           stream: FirebaseFirestore.instance.collection('users').doc(widget.uid).snapshots(),
           builder: (context, userSnapshot) {
             if (!userSnapshot.hasData || !userSnapshot.data!.exists) {
-              return const Center(child: CircularProgressIndicator());
+              return const Center(child: CircularProgressIndicator(color: Colors.purpleAccent));
             }
             final user = User.fromFirestore(userSnapshot.data);
 
@@ -240,22 +279,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
               stream: FirebaseFirestore.instance.collection('shop_items').snapshots(),
               builder: (context, itemSnapshot) {
                 if (!itemSnapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const Center(child: CircularProgressIndicator(color: Colors.purpleAccent));
                 }
                 final allItems = itemSnapshot.data!.docs.map((doc) => Item.fromFirestore(doc)).toList();
                 final finalStats = _calculateFinalStats(user, allItems);
                 final baseStats = user.stats;
 
                 return SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _buildUserHeader(user, context),
                       const SizedBox(height: 24),
-                      // --- NEW: Display for unassigned stat points ---
+
+                      // --- GLOWING STAT POINT BANNER ---
                       if (user.unassignedStatPoints > 0)
                         _buildStatPointHeader(user.unassignedStatPoints),
+
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -280,26 +322,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       _buildSectionHeader("Equipment"),
                       const SizedBox(height: 12),
                       _buildEquipmentSlots(user, allItems),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 32),
                       _buildSectionHeader("Unlocked Skills"),
                       const SizedBox(height: 12),
                       _buildSkillsList(user),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 32),
                       _buildSectionHeader("Unlocked Achievements"),
                       const SizedBox(height: 12),
                       _buildAchievementsList(user),
-                      const Divider(height: 48),
+                      const Divider(height: 48, color: Colors.white24),
                       Center(
                         child: ElevatedButton.icon(
                           onPressed: () => _resetCharacter(user),
-                          icon: const Icon(Icons.refresh),
-                          label: const Text("Reset Character"),
+                          icon: const Icon(Icons.warning_amber_rounded),
+                          label: const Text("Reset Character", style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.1)),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red.shade900,
-                            foregroundColor: Colors.white,
+                            backgroundColor: Colors.transparent,
+                            foregroundColor: Colors.redAccent,
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                            side: BorderSide(color: Colors.redAccent.withOpacity(0.5)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
                         ),
                       ),
+                      const SizedBox(height: 32),
                     ],
                   ),
                 );
@@ -311,24 +357,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // --- NEW: Widget to display available stat points ---
+  // --- GLOWING STAT POINT HEADER ---
   Widget _buildStatPointHeader(int points) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 24),
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
       decoration: BoxDecoration(
-        color: Colors.green.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.green),
+        color: Colors.greenAccent.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.greenAccent.withOpacity(0.5), width: 1.5),
+        boxShadow: [
+          BoxShadow(color: Colors.greenAccent.withOpacity(0.15), blurRadius: 15, spreadRadius: 2),
+        ],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.star, color: Colors.greenAccent),
-          const SizedBox(width: 8),
+          const Icon(Icons.star, color: Colors.greenAccent, size: 28),
+          const SizedBox(width: 12),
           Text(
-            "$points Stat Points Available to Assign",
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            "$points Stat Points Available!",
+            style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                letterSpacing: 1.1
+            ),
           ),
         ],
       ),
@@ -350,110 +404,159 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return finalStats;
   }
 
+  // --- PREMIUM GLASSMORPHISM USER HEADER ---
   Widget _buildUserHeader(User user, BuildContext context) {
     final double progress = user.nextLevelExp() > 0 ? user.exp / user.nextLevelExp() : 0.0;
     final imageUrl = user.avatarUrl ?? avatarUrls.first;
 
-    return Card(
-      color: const Color(0xFF16213E).withOpacity(0.5),
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                GestureDetector(
-                  onTap: () => _showAvatarSelectionDialog(context),
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF16213E).withOpacity(0.8),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.purpleAccent.withOpacity(0.4), width: 1.5),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 15, offset: const Offset(0, 8)),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              GestureDetector(
+                onTap: () => _showAvatarSelectionDialog(context),
+                child: Container(
+                  decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.amber, width: 2),
+                      boxShadow: [
+                        BoxShadow(color: Colors.amber.withOpacity(0.3), blurRadius: 10),
+                      ]
+                  ),
                   child: CircleAvatar(
-                    radius: 35,
+                    radius: 38,
+                    backgroundColor: Colors.purpleAccent.withOpacity(0.2),
                     backgroundImage: NetworkImage(imageUrl),
                     onBackgroundImageError: (_, __) {},
                   ),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              user.name,
-                              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
-                              overflow: TextOverflow.ellipsis,
-                            ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            user.name,
+                            style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: 1.1),
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(width: 4),
-                          InkWell(
-                            onTap: () => _showEditNameDialog(context, user.name),
-                            child: const Icon(Icons.edit, color: Colors.grey, size: 16),
-                          )
-                        ],
-                      ),
-                      Text('" ${user.title} "', style: TextStyle(fontSize: 16, fontStyle: FontStyle.italic, color: Colors.purple.shade200)),
-                      if (user.userClass != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4.0),
-                          child: Text('[${user.userClass}]', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.cyanAccent)),
                         ),
-                    ],
-                  ),
+                        const SizedBox(width: 8),
+                        InkWell(
+                          onTap: () => _showEditNameDialog(context, user.name),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.all(4.0),
+                            child: Icon(Icons.edit, color: Colors.grey.shade400, size: 18),
+                          ),
+                        )
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                        user.title,
+                        style: TextStyle(fontSize: 15, fontStyle: FontStyle.italic, color: Colors.purple.shade200, fontWeight: FontWeight.w500)
+                    ),
+                    if (user.userClass != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6.0),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.cyanAccent.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.cyanAccent.withOpacity(0.5)),
+                          ),
+                          child: Text(
+                            user.userClass!,
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.cyanAccent, letterSpacing: 1),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Chip(
-                  avatar: const Icon(Icons.monetization_on, color: Colors.black, size: 18),
-                  label: Text(user.gold.toString()),
-                  backgroundColor: Colors.amber,
-                  labelStyle: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.amber.withOpacity(0.5)),
                 ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Text('LVL ${user.level}', style: const TextStyle(fontSize: 14, color: Colors.white70, fontWeight: FontWeight.bold)),
-                const SizedBox(width: 12),
-                Expanded(
+                child: Row(
+                  children: [
+                    const Icon(Icons.monetization_on, color: Colors.amber, size: 20),
+                    const SizedBox(width: 8),
+                    Text(user.gold.toString(), style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Text('LVL ${user.level}', style: const TextStyle(fontSize: 14, color: Colors.amber, fontWeight: FontWeight.w900, letterSpacing: 1)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
                   child: LinearProgressIndicator(
                     value: progress,
-                    minHeight: 10,
-                    backgroundColor: Colors.black.withOpacity(0.3),
+                    minHeight: 12,
+                    backgroundColor: Colors.black45,
                     valueColor: const AlwaysStoppedAnimation<Color>(Colors.purpleAccent),
-                    borderRadius: BorderRadius.circular(5),
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Text('${user.exp.toStringAsFixed(0)} / ${user.nextLevelExp().toStringAsFixed(0)} EXP', style: TextStyle(fontSize: 12, color: Colors.grey.shade400)),
-            ),
-          ],
-        ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text('${user.exp.toStringAsFixed(0)} / ${user.nextLevelExp().toStringAsFixed(0)} EXP', style: TextStyle(fontSize: 12, color: Colors.grey.shade400, fontWeight: FontWeight.w600)),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildSectionHeader(String title) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4.0),
-      child: Text(
-        title,
-        style: const TextStyle(
-          fontSize: 22,
-          fontWeight: FontWeight.bold,
-          color: Colors.white,
-          letterSpacing: 1.2,
-        ),
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Row(
+        children: [
+          const Icon(Icons.arrow_right, color: Colors.purpleAccent),
+          Text(
+            title.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+              letterSpacing: 1.5,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -470,39 +573,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
     };
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF16213E).withOpacity(0.5),
-        borderRadius: BorderRadius.circular(12),
+        color: const Color(0xFF16213E).withOpacity(0.8),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.purpleAccent.withOpacity(0.3)),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("Core Attributes", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-          const Divider(color: Colors.purpleAccent),
+          const Text("ATTRIBUTES", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.5)),
+          const Divider(color: Colors.white24, height: 24),
           ...statOrder.map((stat) {
             final baseValue = baseStats[stat] ?? 0;
             final finalValue = finalStats[stat] ?? 0;
             final bonus = finalValue - baseValue;
 
             return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2.0),
+              padding: const EdgeInsets.symmetric(vertical: 4.0),
               child: Row(
                 children: [
-                  Icon(statIcons[stat], color: Colors.white70, size: 20),
+                  Icon(statIcons[stat], color: Colors.purpleAccent.shade100, size: 18),
                   const SizedBox(width: 8),
-                  SizedBox(width: 35, child: Text(stat, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                  SizedBox(width: 35, child: Text(stat, style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 13))),
                   Expanded(child: Text(finalValue.toString(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))),
                   if (bonus > 0)
-                    Text("(+$bonus)", style: const TextStyle(color: Colors.greenAccent, fontSize: 12)),
-                  // --- NEW: Add '+' button if points are available ---
+                    Text("(+$bonus)", style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                  // --- Add '+' button if points are available ---
                   if (canAssignPoints)
-                    SizedBox(
+                    Container(
+                      margin: const EdgeInsets.only(left: 4),
                       height: 24,
                       width: 24,
+                      decoration: BoxDecoration(
+                        color: Colors.greenAccent.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
                       child: IconButton(
                         padding: EdgeInsets.zero,
-                        icon: const Icon(Icons.add_circle_outline, color: Colors.greenAccent, size: 20),
+                        icon: const Icon(Icons.add, color: Colors.greenAccent, size: 18),
                         onPressed: () => _assignStatPoint(stat),
                       ),
                     ),
@@ -529,29 +641,46 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
         return Card(
           color: const Color(0xFF16213E).withOpacity(0.8),
-          elevation: isEquipped ? 4 : 1,
+          elevation: isEquipped ? 4 : 0,
           margin: const EdgeInsets.symmetric(vertical: 6),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: isEquipped ? Colors.purpleAccent.withOpacity(0.5) : Colors.white10),
+          ),
           child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: isEquipped ? Colors.purpleAccent.withOpacity(0.3) : Colors.black.withOpacity(0.3),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            leading: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                  color: isEquipped ? Colors.purpleAccent.withOpacity(0.2) : Colors.black.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: isEquipped ? Colors.purpleAccent.withOpacity(0.5) : Colors.transparent)
+              ),
               child: Icon(
                 slotIcons[slot] ?? Icons.help_outline,
-                color: isEquipped ? Colors.purpleAccent : Colors.grey,
+                color: isEquipped ? Colors.purpleAccent.shade100 : Colors.grey,
               ),
             ),
             title: Text(
               item?.name ?? 'Empty ${slot.name} slot',
               style: TextStyle(
-                color: isEquipped ? Colors.white : Colors.grey,
+                color: isEquipped ? Colors.white : Colors.grey.shade600,
                 fontWeight: FontWeight.bold,
+                fontSize: 16,
               ),
             ),
             subtitle: isEquipped
-                ? Text(
-              '+${(item.effects['value'] as num? ?? 0).toInt()} ${item.effects['stat']}',
-              style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.w500),
+                ? Padding(
+              padding: const EdgeInsets.only(top: 4.0),
+              child: Text(
+                '+${(item.effects['value'] as num? ?? 0).toInt()} ${item.effects['stat']}',
+                style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 13),
+              ),
             )
-                : Text("Nothing equipped", style: TextStyle(color: Colors.grey.shade600)),
+                : Padding(
+              padding: const EdgeInsets.only(top: 4.0),
+              child: Text("Nothing equipped", style: TextStyle(color: Colors.grey.shade700, fontStyle: FontStyle.italic)),
+            ),
           ),
         );
       }).toList(),
@@ -560,15 +689,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildSkillsList(User user) {
     if (user.unlockedSkills.isEmpty) {
-      return const Center(
-          child:
-          Text("No skills unlocked yet.", style: TextStyle(color: Colors.grey)));
+      return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: Column(
+            children: [
+              Icon(Icons.auto_awesome, color: Colors.grey.withOpacity(0.5), size: 40),
+              const SizedBox(height: 12),
+              const Text("No skills unlocked yet.", style: TextStyle(color: Colors.grey, fontSize: 16)),
+            ],
+          )
+      );
     }
     return Container(
-      padding: const EdgeInsets.all(12),
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(12),
+        color: const Color(0xFF16213E).withOpacity(0.5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.cyanAccent.withOpacity(0.2)),
       ),
       child: FutureBuilder<QuerySnapshot>(
           future: FirebaseFirestore.instance.collection('skills').get(),
@@ -576,17 +720,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
             if (!snapshot.hasData) return const SizedBox.shrink();
             final allSkillsMap = { for (var doc in snapshot.data!.docs) doc.id: doc.data() as Map<String, dynamic> };
             return Wrap(
-              spacing: 8.0,
-              runSpacing: 8.0,
+              spacing: 12.0,
+              runSpacing: 12.0,
               children: user.unlockedSkills.entries.map((entry) {
                 final skillData = allSkillsMap[entry.key];
                 if (skillData == null) return const SizedBox.shrink();
-                return Chip(
-                  avatar: const Icon(Icons.star, color: Colors.black, size: 16),
-                  label: Text("${skillData['title']} - LVL ${entry.value}"),
-                  backgroundColor: Colors.greenAccent,
-                  labelStyle: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.cyanAccent.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.cyanAccent.withOpacity(0.5)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.star_purple500, color: Colors.cyanAccent, size: 16),
+                      const SizedBox(width: 8),
+                      Text(
+                          "${skillData['title']} ",
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)
+                      ),
+                      Text(
+                          "Lv.${entry.value}",
+                          style: const TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.w900)
+                      ),
+                    ],
+                  ),
                 );
               }).toList(),
             );
@@ -596,15 +756,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildAchievementsList(User user) {
     if (user.unlockedAchievements.isEmpty) {
-      return const Center(
-          child: Text("No achievements unlocked yet.",
-              style: TextStyle(color: Colors.grey)));
+      return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: Column(
+            children: [
+              Icon(Icons.emoji_events_outlined, color: Colors.grey.withOpacity(0.5), size: 40),
+              const SizedBox(height: 12),
+              const Text("No achievements unlocked yet.", style: TextStyle(color: Colors.grey, fontSize: 16)),
+            ],
+          )
+      );
     }
     return Container(
-      padding: const EdgeInsets.all(12),
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(12),
+        color: const Color(0xFF16213E).withOpacity(0.5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.amber.withOpacity(0.2)),
       ),
       child: FutureBuilder<QuerySnapshot>(
         future: FirebaseFirestore.instance.collection('achievements').get(),
@@ -612,17 +787,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
           if (!snapshot.hasData) return const SizedBox.shrink();
           final allAchievementsMap = { for (var doc in snapshot.data!.docs) doc.id: doc.data() as Map<String, dynamic> };
           return Wrap(
-            spacing: 8.0,
-            runSpacing: 8.0,
+            spacing: 12.0,
+            runSpacing: 12.0,
             children: user.unlockedAchievements.keys.map((key) {
               final achievementData = allAchievementsMap[key];
               if (achievementData == null) return const SizedBox.shrink();
-              return Chip(
-                avatar: const Icon(Icons.emoji_events, color: Colors.black, size: 16),
-                label: Text(achievementData['title'] ?? key),
-                backgroundColor: Colors.amber,
-                labelStyle: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.amber.withOpacity(0.5)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.emoji_events, color: Colors.amber, size: 16),
+                    const SizedBox(width: 8),
+                    Text(
+                        achievementData['title'] ?? key,
+                        style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)
+                    ),
+                  ],
+                ),
               );
             }).toList(),
           );

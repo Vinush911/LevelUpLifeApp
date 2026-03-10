@@ -30,7 +30,10 @@ class QuestScreen extends StatelessWidget {
       stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+              backgroundColor: Color(0xFF1A1A2E),
+              body: Center(child: CircularProgressIndicator(color: Colors.purpleAccent))
+          );
         }
         final user = User.fromFirestore(snapshot.data);
         // Regenerate energy on build to update the initial check for the FAB
@@ -39,32 +42,51 @@ class QuestScreen extends StatelessWidget {
         return DefaultTabController(
           length: 3,
           child: Scaffold(
+            backgroundColor: const Color(0xFF1A1A2E),
             appBar: AppBar(
-              title: const Text("Quest Log"),
-              bottom: const TabBar(
-                tabs: [
-                  Tab(text: "Main"),
-                  Tab(text: "Daily"),
-                  Tab(text: "Completed"),
+              title: const Text("Bounty Board", style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+              backgroundColor: const Color(0xFF0F3460),
+              elevation: 0,
+              bottom: TabBar(
+                indicatorColor: Colors.amber,
+                indicatorWeight: 3,
+                labelColor: Colors.amber,
+                unselectedLabelColor: Colors.grey.shade400,
+                labelStyle: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.1),
+                tabs: const [
+                  Tab(text: "MAIN"),
+                  Tab(text: "DAILY"),
+                  Tab(text: "COMPLETED"),
                 ],
               ),
             ),
-            body: TabBarView(
-              children: [
-                _MainQuestsView(uid: uid),
-                _DailyQuestsView(uid: uid),
-                _CompletedQuestsView(uid: uid),
-              ],
+            body: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF0F3460), Color(0xFF1A1A2E)],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
+              child: TabBarView(
+                children: [
+                  _MainQuestsView(uid: uid),
+                  _DailyQuestsView(uid: uid),
+                  _CompletedQuestsView(uid: uid),
+                ],
+              ),
             ),
-            floatingActionButton: FloatingActionButton(
-              tooltip: "Add Main Quest",
-              child: const Icon(Icons.add),
+            floatingActionButton: FloatingActionButton.extended(
+              backgroundColor: Colors.amber,
+              foregroundColor: Colors.black,
+              icon: const Icon(Icons.add),
+              label: const Text("New Quest", style: TextStyle(fontWeight: FontWeight.bold)),
               onPressed: () {
                 const int creationCost = 5;
                 if (user.currentEnergy < creationCost) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text("Not enough energy to create a quest."),
+                      content: Text("Not enough energy to create a quest.", style: TextStyle(fontWeight: FontWeight.bold)),
                       backgroundColor: Colors.orange,
                     ),
                   );
@@ -79,7 +101,6 @@ class QuestScreen extends StatelessWidget {
     );
   }
 }
-
 
 // --- Main Quest Card Widget ---
 class _MainQuestCard extends StatefulWidget {
@@ -117,13 +138,19 @@ class _MainQuestCardState extends State<_MainQuestCard> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Quest?'),
-        content: Text('Are you sure you want to delete "${widget.quest['title']}"?'),
+        backgroundColor: const Color(0xFF16213E),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Colors.redAccent, width: 2),
+        ),
+        title: const Text('Abandon Quest?', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: Text('Are you sure you want to abandon "${widget.quest['title']}"?', style: const TextStyle(color: Colors.white70)),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
-          TextButton(
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+            child: const Text('Abandon', style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -143,38 +170,61 @@ class _MainQuestCardState extends State<_MainQuestCard> {
   Widget build(BuildContext context) {
     final title = widget.quest['title'] ?? 'Unnamed Quest';
     final rewards = _getRewardString(widget.quest);
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Row(
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF16213E).withOpacity(0.8),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.purpleAccent.withOpacity(0.4), width: 1.5),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10, spreadRadius: 1),
+        ],
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        leading: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.amber.withOpacity(0.15),
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.amber.withOpacity(0.5)),
+          ),
+          child: const Icon(Icons.star, color: Colors.amber, size: 24),
+        ),
+        title: Text(
+            title,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)
+        ),
+        subtitle: rewards.isNotEmpty
+            ? Padding(
+          padding: const EdgeInsets.only(top: 6.0),
+          child: Text(rewards, style: const TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.w600, fontSize: 13)),
+        )
+            : null,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.star, color: Colors.yellowAccent),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  if (rewards.isNotEmpty) const SizedBox(height: 4),
-                  if (rewards.isNotEmpty) Text(rewards, style: TextStyle(color: Theme.of(context).colorScheme.secondary)),
-                ],
-              ),
-            ),
             if (_isProcessing)
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 12.0),
-                child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator()),
+                child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.purpleAccent, strokeWidth: 3)),
               )
             else
               ElevatedButton(
                 onPressed: _handlePress,
-                child: const Icon(Icons.check),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.purpleAccent,
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                ),
+                child: const Text("Complete", style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             IconButton(
-              icon: Icon(Icons.delete_outline, color: Colors.grey.shade600),
+              icon: Icon(Icons.delete_outline, color: Colors.redAccent.withOpacity(0.7)),
               onPressed: _deleteQuest,
-              tooltip: "Delete Quest",
+              tooltip: "Abandon Quest",
             ),
           ],
         ),
@@ -203,41 +253,82 @@ class _DailyQuestCard extends StatelessWidget {
     final title = questData['title'] ?? 'Unnamed Quest';
     final rewards = _getRewardString(questData);
 
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-      color: isCompleted ? Colors.grey.shade800.withOpacity(0.5) : null,
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      decoration: BoxDecoration(
+        color: isCompleted ? Colors.black.withOpacity(0.4) : const Color(0xFF16213E).withOpacity(0.8),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+            color: isCompleted ? Colors.white12 : Colors.tealAccent.withOpacity(0.5),
+            width: 1.5
+        ),
+      ),
       child: ListTile(
-        leading: Icon(Icons.repeat, color: isCompleted ? Colors.grey : Colors.tealAccent),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        leading: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: isCompleted ? Colors.grey.withOpacity(0.1) : Colors.tealAccent.withOpacity(0.15),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(Icons.repeat, color: isCompleted ? Colors.grey.shade600 : Colors.tealAccent, size: 24),
+        ),
         title: Row(
           children: [
             Flexible(
               child: Text(
                 title,
                 style: TextStyle(
-                  color: isCompleted ? Colors.grey : Theme.of(context).textTheme.bodyLarge?.color,
+                  color: isCompleted ? Colors.grey.shade500 : Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
                   decoration: isCompleted ? TextDecoration.lineThrough : TextDecoration.none,
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            if (streak > 0) ...[
+            if (streak > 0 && !isCompleted) ...[
               const SizedBox(width: 8),
-              const Icon(Icons.whatshot, color: Colors.orange, size: 16),
-              const SizedBox(width: 4),
-              Text(streak.toString(), style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange.withOpacity(0.5))
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.whatshot, color: Colors.orange, size: 14),
+                    const SizedBox(width: 4),
+                    Text(streak.toString(), style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 12)),
+                  ],
+                ),
+              ),
             ]
           ],
         ),
-        subtitle: Text(
-          rewards,
-          style: TextStyle(color: isCompleted ? Colors.grey.shade600 : Colors.tealAccent.shade200),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 6.0),
+          child: Text(
+            rewards,
+            style: TextStyle(
+                color: isCompleted ? Colors.grey.shade700 : Colors.tealAccent.shade100,
+                fontWeight: FontWeight.w600,
+                fontSize: 13
+            ),
+          ),
         ),
         trailing: isCompleted
-            ? const Icon(Icons.check_circle, color: Colors.greenAccent)
+            ? Icon(Icons.check_circle, color: Colors.grey.shade600, size: 32)
             : ElevatedButton(
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.tealAccent, foregroundColor: Colors.black),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.tealAccent,
+            foregroundColor: Colors.black,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          ),
           onPressed: onComplete,
-          child: const Text("Claim"),
+          child: const Text("Claim", style: TextStyle(fontWeight: FontWeight.bold)),
         ),
       ),
     );
@@ -481,11 +572,23 @@ class _MainQuestsView extends StatelessWidget {
     return StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('users').doc(uid).collection('quests').where('completed', isEqualTo: false).snapshots(),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-          if (snapshot.data!.docs.isEmpty) return const Center(child: Text("No active main quests."));
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.purpleAccent));
+          if (snapshot.data!.docs.isEmpty) {
+            return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.assignment_turned_in_outlined, size: 64, color: Colors.grey.withOpacity(0.5)),
+                    const SizedBox(height: 16),
+                    Text("No active main quests.", style: TextStyle(color: Colors.grey.shade400, fontSize: 16)),
+                  ],
+                )
+            );
+          }
 
           return ListView.builder(
-            padding: const EdgeInsets.all(12),
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.only(top: 8, bottom: 80),
             itemCount: snapshot.data!.docs.length,
             itemBuilder: (listViewContext, index) {
               final questDoc = snapshot.data!.docs[index];
@@ -512,13 +615,25 @@ class _DailyQuestsView extends StatelessWidget {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('daily_quests').snapshots(),
       builder: (context, questSnapshot) {
-        if (!questSnapshot.hasData) return const Center(child: CircularProgressIndicator());
-        if (questSnapshot.data!.docs.isEmpty) return const Center(child: Text("No daily quests available."));
+        if (!questSnapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.tealAccent));
+        if (questSnapshot.data!.docs.isEmpty) {
+          return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.wb_sunny_outlined, size: 64, color: Colors.grey.withOpacity(0.5)),
+                  const SizedBox(height: 16),
+                  Text("No daily quests available.", style: TextStyle(color: Colors.grey.shade400, fontSize: 16)),
+                ],
+              )
+          );
+        }
 
         final dailyQuests = questSnapshot.data!.docs;
 
         return ListView.builder(
-          padding: const EdgeInsets.all(12),
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.only(top: 8, bottom: 80),
           itemCount: dailyQuests.length,
           itemBuilder: (context, index) {
             final quest = dailyQuests[index];
@@ -568,11 +683,23 @@ class _CompletedQuestsView extends StatelessWidget {
             .orderBy('completedAt', descending: true)
             .snapshots(),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-          if (snapshot.data!.docs.isEmpty) return const Center(child: Text("No completed quests yet."));
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.grey));
+          if (snapshot.data!.docs.isEmpty) {
+            return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.history, size: 64, color: Colors.grey.withOpacity(0.5)),
+                    const SizedBox(height: 16),
+                    Text("No completed quests yet.", style: TextStyle(color: Colors.grey.shade400, fontSize: 16)),
+                  ],
+                )
+            );
+          }
 
           return ListView.builder(
-            padding: const EdgeInsets.all(12),
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.only(top: 8, bottom: 80),
             itemCount: snapshot.data!.docs.length,
             itemBuilder: (context, index) {
               final quest = snapshot.data!.docs[index].data() as Map<String, dynamic>;
@@ -582,12 +709,17 @@ class _CompletedQuestsView extends StatelessWidget {
                 completedDate = DateFormat.yMMMd().format(timestamp.toDate());
               }
 
-              return Card(
-                color: Colors.black26,
+              return Container(
+                margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white10),
+                ),
                 child: ListTile(
                   leading: const Icon(Icons.check_circle, color: Colors.greenAccent),
-                  title: Text(quest['title'] ?? 'Quest', style: const TextStyle(decoration: TextDecoration.lineThrough, color: Colors.grey)),
-                  subtitle: completedDate.isNotEmpty ? Text('Completed on $completedDate', style: TextStyle(color: Colors.grey.shade600)) : null,
+                  title: Text(quest['title'] ?? 'Quest', style: TextStyle(decoration: TextDecoration.lineThrough, color: Colors.grey.shade500, fontWeight: FontWeight.bold)),
+                  subtitle: completedDate.isNotEmpty ? Text('Completed on $completedDate', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)) : null,
                 ),
               );
             },
@@ -651,7 +783,11 @@ void _showAddMainQuestDialog(BuildContext context, String uid) {
     context: context,
     builder: (_) => AlertDialog(
       backgroundColor: const Color(0xFF16213E),
-      title: const Text("Add a New Main Quest", style: TextStyle(color: Colors.white)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: Colors.purpleAccent.withOpacity(0.5), width: 1.5),
+      ),
+      title: const Text("Post a Bounty", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -661,21 +797,49 @@ void _showAddMainQuestDialog(BuildContext context, String uid) {
               controller: titleController,
               autofocus: true,
               style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(labelText: "Quest Title", labelStyle: TextStyle(color: Colors.purple.shade200)),
+              decoration: InputDecoration(
+                labelText: "Quest Title",
+                labelStyle: TextStyle(color: Colors.grey.shade400),
+                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.purple.shade200)),
+                focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.purpleAccent)),
+              ),
             ),
-            const SizedBox(height: 16),
-            Text(
-              "Rewards will be randomized upon creation.",
-              style: TextStyle(color: Colors.grey.shade400, fontStyle: FontStyle.italic),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.amber.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.amber.withOpacity(0.3)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.amber, size: 20),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                        "Rewards will be randomized upon creation.",
+                        style: TextStyle(fontStyle: FontStyle.italic, color: Colors.white70, fontSize: 13)
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
       ),
       actions: [
-        TextButton(child: const Text("Cancel"), onPressed: () => Navigator.pop(context)),
+        TextButton(
+            child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
+            onPressed: () => Navigator.pop(context)
+        ),
         ElevatedButton(
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.purpleAccent),
-          child: const Text("Add Quest"),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.purpleAccent,
+            foregroundColor: Colors.black,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+          child: const Text("Add Quest", style: TextStyle(fontWeight: FontWeight.bold)),
           onPressed: () async {
             final title = titleController.text.trim();
             if (title.isNotEmpty) {
@@ -719,7 +883,7 @@ void _showAddMainQuestDialog(BuildContext context, String uid) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(e.toString().replaceAll("Exception: ", "")),
-                      backgroundColor: Colors.red,
+                      backgroundColor: Colors.redAccent,
                     ),
                   );
                 }
@@ -731,4 +895,3 @@ void _showAddMainQuestDialog(BuildContext context, String uid) {
     ),
   );
 }
-

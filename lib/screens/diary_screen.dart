@@ -5,8 +5,6 @@ import 'package:provider/provider.dart'; // 1️⃣ Import Provider
 import '../models/diary_entry.dart';
 import '../utils/firestore_sync_notifier.dart'; // 2️⃣ Import Sync Notifier
 import 'edit_diary_entry_screen.dart';
-import '../services/notification_service.dart';
-
 
 class DiaryScreen extends StatelessWidget {
   final String uid;
@@ -17,28 +15,8 @@ class DiaryScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Diary'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications),
-            onPressed: () async {
-              await NotificationService.instance.showTestNotification();
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.alarm),
-            onPressed: () async {
-              final now = TimeOfDay.now();
-
-              await NotificationService.instance.scheduleDailyDiaryReminder(
-                hour: now.hour,
-                minute: (now.minute + 1) % 60, // 🔔 1 minute later
-              );
-            },
-          ),
-
-        ],
+        // Test notification buttons removed from here
       ),
-
       body: Column(
         children: [
           // 3️⃣ Offline Banner (Added at the top of the body)
