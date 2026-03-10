@@ -16,7 +16,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
 
   // Helper to format timestamps beautifully using intl
   String _formatDate(Timestamp timestamp) {
-    return DateFormat.yMMMd().add_jm().format(timestamp.toDate());
+    return DateFormat('EEE, MMM d, h:mm a').format(timestamp.toDate());
   }
 
   Future<void> _processTransaction({
@@ -59,6 +59,17 @@ class _LedgerScreenState extends State<LedgerScreen> {
           'transactions': [newTransaction],
         });
       }
+
+      // --- NEW: LOG ACTIVITY TO ADVENTURER'S LOG ---
+      final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('activity_log')
+          .doc(todayStr)
+          .set({
+        'ledgerUpdates': FieldValue.increment(1),
+      }, SetOptions(merge: true));
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -149,6 +160,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF16213E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: Colors.redAccent)),
         title: const Text("Delete Transaction?", style: TextStyle(color: Colors.white)),
         content: const Text(
           "Are you sure you want to remove this record? This will adjust the total balance accordingly.",
@@ -159,12 +171,13 @@ class _LedgerScreenState extends State<LedgerScreen> {
             onPressed: () => Navigator.pop(ctx),
             child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
           ),
-          TextButton(
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
             onPressed: () {
               Navigator.pop(ctx);
               _deleteTransaction(docId, transaction);
             },
-            child: const Text("Delete", style: TextStyle(color: Colors.redAccent)),
+            child: const Text("Delete"),
           ),
         ],
       ),
@@ -177,6 +190,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF16213E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: Colors.redAccent)),
         title: Text("Delete $personName's Ledger?", style: const TextStyle(color: Colors.white)),
         content: const Text(
           "This will permanently delete this person and all associated transaction history. This action cannot be undone.",
@@ -188,12 +202,12 @@ class _LedgerScreenState extends State<LedgerScreen> {
             child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
             onPressed: () {
               Navigator.pop(ctx);
               _deleteLedger(docId);
             },
-            child: const Text("Delete Ledger", style: TextStyle(color: Colors.white)),
+            child: const Text("Delete Ledger"),
           ),
         ],
       ),
@@ -255,24 +269,32 @@ class _LedgerScreenState extends State<LedgerScreen> {
                       icon: Icons.description_outlined,
                       validator: (val) => val == null || val.isEmpty ? "Description is required" : null,
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 24),
                     Wrap(
-                      alignment: WrapAlignment.spaceAround,
-                      spacing: 8.0,
-                      runSpacing: 8.0,
+                      alignment: WrapAlignment.center,
+                      spacing: 12.0,
+                      runSpacing: 12.0,
                       children: [
                         ChoiceChip(
-                          label: const Text("I Gave Them", style: TextStyle(fontWeight: FontWeight.bold)),
+                          label: const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                            child: Text("I Gave Them", style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
                           selected: isLent,
-                          selectedColor: Colors.amber.withOpacity(0.8),
+                          selectedColor: Colors.amber.withOpacity(0.9),
                           backgroundColor: Colors.black26,
+                          labelStyle: TextStyle(color: isLent ? Colors.black : Colors.white),
                           onSelected: (val) => setState(() => isLent = true),
                         ),
                         ChoiceChip(
-                          label: const Text("They Gave Me", style: TextStyle(fontWeight: FontWeight.bold)),
+                          label: const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                            child: Text("They Gave Me", style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
                           selected: !isLent,
-                          selectedColor: Colors.redAccent.withOpacity(0.8),
+                          selectedColor: Colors.redAccent.withOpacity(0.9),
                           backgroundColor: Colors.black26,
+                          labelStyle: TextStyle(color: !isLent ? Colors.white : Colors.white),
                           onSelected: (val) => setState(() => isLent = false),
                         ),
                       ],
@@ -290,6 +312,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.purpleAccent,
                   foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
                 onPressed: () {
                   if (formKey.currentState!.validate()) {
@@ -353,7 +376,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
     );
   }
 
-  // --- NEW: Top Dashboard to show total net worth ---
+  // --- Top Dashboard to show total net worth ---
   Widget _buildSummaryDashboard(double totalOwedToMe, double totalIOwe) {
     final netWorth = totalOwedToMe - totalIOwe;
 
@@ -361,29 +384,46 @@ class _LedgerScreenState extends State<LedgerScreen> {
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
       decoration: BoxDecoration(
-        color: const Color(0xFF16213E),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.purpleAccent.withOpacity(0.3), width: 1.5),
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFF16213E),
+            const Color(0xFF16213E).withOpacity(0.8)
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.purpleAccent.withOpacity(0.4), width: 1.5),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5)),
+          BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 15, offset: const Offset(0, 8)),
         ],
       ),
       child: Column(
         children: [
-          const Text(
-            "NET BALANCE",
-            style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.account_balance, color: Colors.grey, size: 16),
+              const SizedBox(width: 8),
+              Text(
+                "NET BALANCE",
+                style: TextStyle(color: Colors.grey.shade400, fontSize: 13, fontWeight: FontWeight.bold, letterSpacing: 1.5),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Text(
             "${netWorth >= 0 ? '+' : '-'}₹${netWorth.abs().toStringAsFixed(2)}",
             style: TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
+              fontSize: 36,
+              fontWeight: FontWeight.w900,
               color: netWorth >= 0 ? Colors.amber : Colors.redAccent,
+              shadows: [
+                Shadow(color: (netWorth >= 0 ? Colors.amber : Colors.redAccent).withOpacity(0.3), blurRadius: 10),
+              ],
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
@@ -400,8 +440,8 @@ class _LedgerScreenState extends State<LedgerScreen> {
   Widget _buildSummaryColumn(String label, double amount, Color color) {
     return Column(
       children: [
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-        const SizedBox(height: 4),
+        Text(label, style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
+        const SizedBox(height: 6),
         Text(
           "₹${amount.toStringAsFixed(2)}",
           style: TextStyle(color: color, fontSize: 18, fontWeight: FontWeight.bold),
@@ -426,7 +466,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF1A1A2E),
       appBar: AppBar(
-        title: const Text("Merchant's Ledger"),
+        title: const Text("Merchant's Ledger", style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: const Color(0xFF0F3460),
         elevation: 0,
         centerTitle: true,
@@ -435,7 +475,8 @@ class _LedgerScreenState extends State<LedgerScreen> {
         onPressed: () => _showTransactionDialog(),
         backgroundColor: Colors.amber,
         foregroundColor: Colors.black,
-        icon: const Icon(Icons.person_add),
+        elevation: 8,
+        icon: const Icon(Icons.person_add_alt_1_rounded),
         label: const Text("New Ledger Entry", style: TextStyle(fontWeight: FontWeight.bold)),
       ),
       body: Container(
@@ -455,7 +496,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
               .snapshots(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
+              return const Center(child: CircularProgressIndicator(color: Colors.purpleAccent));
             }
 
             // Calculate Dashboard Totals
@@ -472,7 +513,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
 
             return Column(
               children: [
-                // 1. The new Summary Dashboard
+                // 1. The Summary Dashboard
                 _buildSummaryDashboard(totalOwedToMe, totalIOwe),
 
                 // 2. The Ledger List (or Empty state)
@@ -482,18 +523,30 @@ class _LedgerScreenState extends State<LedgerScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.account_balance_wallet_outlined, size: 80, color: Colors.grey.withOpacity(0.3)),
-                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.2),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(Icons.menu_book_rounded, size: 80, color: Colors.purpleAccent.withOpacity(0.5)),
+                        ),
+                        const SizedBox(height: 24),
                         const Text(
-                          "Your ledger is empty.\nAdd an entry to track debts and loans.",
+                          "Your ledger is empty.",
+                          style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          "Add an entry to track debts and loans.",
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey, fontSize: 16),
+                          style: TextStyle(color: Colors.grey, fontSize: 15),
                         ),
                       ],
                     ),
                   )
                       : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8).copyWith(bottom: 80),
                     itemCount: ledgers.length,
                     itemBuilder: (context, index) {
                       final doc = ledgers[index];
@@ -524,101 +577,127 @@ class _LedgerScreenState extends State<LedgerScreen> {
 
                       return Card(
                         color: const Color(0xFF16213E),
-                        margin: const EdgeInsets.only(bottom: 12),
-                        elevation: 4,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        elevation: 6,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          side: BorderSide(color: balanceColor.withOpacity(0.3), width: 1),
+                          borderRadius: BorderRadius.circular(16),
+                          side: BorderSide(color: balanceColor.withOpacity(0.4), width: 1.5),
                         ),
-                        child: ExpansionTile(
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          iconColor: Colors.white,
-                          collapsedIconColor: Colors.white70,
-                          title: Text(
-                            personName,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white),
-                          ),
-                          subtitle: Text(
-                            balanceText,
-                            style: TextStyle(color: balanceColor, fontWeight: FontWeight.w600),
-                          ),
-                          children: [
-                            const Divider(color: Colors.white24),
-                            if (transactions.isEmpty)
-                              const Padding(
-                                padding: EdgeInsets.all(16.0),
-                                child: Text("No transaction history.", style: TextStyle(color: Colors.grey)),
-                              ),
-                            ...transactions.map((tx) {
-                              final isLent = tx['isLent'] ?? true;
-                              final amount = (tx['amount'] as num?)?.toDouble() ?? 0.0;
-                              final desc = tx['description'] ?? '';
-                              final timestamp = tx['timestamp'] as Timestamp?;
-
-                              return ListTile(
-                                onLongPress: () => _confirmDeleteTransaction(doc.id, tx),
-                                leading: CircleAvatar(
-                                  backgroundColor: isLent ? Colors.amber.withOpacity(0.2) : Colors.redAccent.withOpacity(0.2),
-                                  child: Icon(
-                                    isLent ? Icons.arrow_upward : Icons.arrow_downward,
-                                    color: isLent ? Colors.amber : Colors.redAccent,
+                        child: Theme(
+                          data: Theme.of(context).copyWith(dividerColor: Colors.transparent), // Removes the ugly divider inside ExpansionTile
+                          child: ExpansionTile(
+                            tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            childrenPadding: const EdgeInsets.only(bottom: 12, left: 8, right: 8),
+                            iconColor: balanceColor,
+                            collapsedIconColor: Colors.white70,
+                            // --- PRETTIFIED TITLE ---
+                            title: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: balanceColor.withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
+                                  child: Icon(Icons.person, color: balanceColor, size: 24),
                                 ),
-                                title: Text(desc, style: const TextStyle(color: Colors.white)),
-                                subtitle: Text(
-                                  timestamp != null ? _formatDate(timestamp) : 'Unknown Date',
-                                  style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
-                                ),
-                                trailing: Text(
-                                  "${isLent ? '+' : '-'}₹${amount.toStringAsFixed(2)}",
-                                  style: TextStyle(
-                                    color: isLent ? Colors.amber : Colors.redAccent,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              );
-                            }),
-                            if (transactions.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 8.0),
-                                child: Text("Long-press a transaction to delete it.", style: TextStyle(color: Colors.grey.shade600, fontSize: 11, fontStyle: FontStyle.italic)),
-                              ),
-                            const SizedBox(height: 8),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: OutlinedButton.icon(
-                                      style: OutlinedButton.styleFrom(
-                                          foregroundColor: Colors.purpleAccent,
-                                          side: const BorderSide(color: Colors.purpleAccent),
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        personName,
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white),
+                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                      onPressed: () => _showTransactionDialog(
-                                        existingDocId: doc.id,
-                                        existingName: personName,
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        balanceText,
+                                        style: TextStyle(color: balanceColor, fontWeight: FontWeight.w600, fontSize: 13),
                                       ),
-                                      icon: const Icon(Icons.add_circle_outline),
-                                      label: const Text("Update Balance"),
-                                    ),
+                                    ],
                                   ),
-                                  const SizedBox(width: 8),
-                                  OutlinedButton(
-                                    style: OutlinedButton.styleFrom(
-                                        foregroundColor: Colors.redAccent,
-                                        side: const BorderSide(color: Colors.redAccent),
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
-                                    ),
-                                    onPressed: () => _confirmDeleteLedger(doc.id, personName),
-                                    child: const Icon(Icons.delete_outline),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.add_circle_outline),
+                                  color: Colors.purpleAccent.shade100,
+                                  splashRadius: 24,
+                                  tooltip: "Update Balance",
+                                  onPressed: () => _showTransactionDialog(
+                                    existingDocId: doc.id,
+                                    existingName: personName,
                                   ),
-                                ],
-                              ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline),
+                                  color: Colors.redAccent.withOpacity(0.8),
+                                  splashRadius: 24,
+                                  tooltip: "Delete Ledger",
+                                  onPressed: () => _confirmDeleteLedger(doc.id, personName),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 8),
-                          ],
+                            children: [
+                              Container(height: 1, color: Colors.white12, margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8)),
+                              if (transactions.isEmpty)
+                                const Padding(
+                                  padding: EdgeInsets.all(24.0),
+                                  child: Text("No transaction history.", style: TextStyle(color: Colors.grey)),
+                                ),
+                              ...transactions.map((tx) {
+                                final isLent = tx['isLent'] ?? true;
+                                final amount = (tx['amount'] as num?)?.toDouble() ?? 0.0;
+                                final desc = tx['description'] ?? '';
+                                final timestamp = tx['timestamp'] as Timestamp?;
+                                final txColor = isLent ? Colors.amber : Colors.redAccent;
+
+                                return ListTile(
+                                  onLongPress: () => _confirmDeleteTransaction(doc.id, tx),
+                                  leading: Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: txColor.withOpacity(0.15),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Icon(
+                                      isLent ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
+                                      color: txColor,
+                                      size: 20,
+                                    ),
+                                  ),
+                                  title: Text(desc, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+                                  subtitle: Padding(
+                                    padding: const EdgeInsets.only(top: 4.0),
+                                    child: Text(
+                                      timestamp != null ? _formatDate(timestamp) : 'Unknown Date',
+                                      style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                                    ),
+                                  ),
+                                  trailing: Text(
+                                    "${isLent ? '+' : '-'}₹${amount.toStringAsFixed(2)}",
+                                    style: TextStyle(
+                                      color: txColor,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                );
+                              }),
+                              if (transactions.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 8.0, top: 16.0),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.info_outline, size: 14, color: Colors.grey.shade600),
+                                      const SizedBox(width: 6),
+                                      Text("Long-press a transaction to delete it.", style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontStyle: FontStyle.italic)),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                       );
                     },
