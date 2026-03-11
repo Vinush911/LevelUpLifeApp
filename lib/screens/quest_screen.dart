@@ -36,7 +36,6 @@ class QuestScreen extends StatelessWidget {
           );
         }
         final user = User.fromFirestore(snapshot.data);
-        // Regenerate energy on build to update the initial check for the FAB
         user.regenerateEnergy();
 
         return DefaultTabController(
@@ -82,17 +81,8 @@ class QuestScreen extends StatelessWidget {
               icon: const Icon(Icons.add),
               label: const Text("New Quest", style: TextStyle(fontWeight: FontWeight.bold)),
               onPressed: () {
-                const int creationCost = 5;
-                if (user.currentEnergy < creationCost) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Not enough energy to create a quest.", style: TextStyle(fontWeight: FontWeight.bold)),
-                      backgroundColor: Colors.orange,
-                    ),
-                  );
-                } else {
-                  _showAddMainQuestDialog(context, uid);
-                }
+                // Anyone can organize their life, energy is no longer required to CREATE a quest!
+                _showAddMainQuestDialog(context, uid);
               },
             ),
           ),
@@ -233,7 +223,6 @@ class _MainQuestCardState extends State<_MainQuestCard> {
   }
 }
 
-
 // --- Daily Quest Card UI Widget ---
 class _DailyQuestCard extends StatelessWidget {
   final Map<String, dynamic> questData;
@@ -359,6 +348,8 @@ class _DailyQuestStateWrapper extends StatelessWidget {
       final dailyStatusDoc = await dailyStatusRef.get();
 
       final user = User.fromFirestore(userDoc);
+      user.regenerateEnergy(); // Ensure energy is fully updated
+
       final initialLevel = user.level;
       bool bonusAwarded = false;
 
@@ -375,30 +366,37 @@ class _DailyQuestStateWrapper extends StatelessWidget {
       }
       int newStreak = currentStreak + 1;
 
-      double expToAdd = (questData['totalExpReward'] ?? 0).toDouble();
-      int goldToAdd = ((questData['goldReward'] ?? 0) as num).toInt();
+      // --- EXHAUSTION LOGIC (Daily Quests) ---
+      const int completionCost = 10;
+      final bool hasEnergy = user.currentEnergy >= completionCost;
 
-      final statReward = questData['statReward'] as Map<String, dynamic>? ?? {};
-      if (statReward.isNotEmpty) {
-        final statName = statReward.keys.first;
-        int pointsToAdd = ((statReward.values.first ?? 0) as num).toInt();
-        user.stats[statName] = (user.stats[statName] ?? 0) + pointsToAdd;
-      }
+      if (hasEnergy) {
+        user.currentEnergy -= completionCost;
 
-      if (newStreak % 7 == 0 && newStreak > 0) {
-        goldToAdd += 100;
-        bonusAwarded = true;
-      }
+        double expToAdd = (questData['totalExpReward'] ?? 0).toDouble();
+        int goldToAdd = ((questData['goldReward'] ?? 0) as num).toInt();
 
-      user.exp += expToAdd;
-      user.gold += goldToAdd;
+        final statReward = questData['statReward'] as Map<String, dynamic>? ?? {};
+        if (statReward.isNotEmpty) {
+          final statName = statReward.keys.first;
+          int pointsToAdd = ((statReward.values.first ?? 0) as num).toInt();
+          user.stats[statName] = (user.stats[statName] ?? 0) + pointsToAdd;
+        }
 
-      // --- MODIFIED: Grant unassigned stat points on level up ---
-      while (user.exp >= user.nextLevelExp()) {
-        user.exp -= user.nextLevelExp();
-        user.level += 1;
-        user.unassignedStatPoints += 3; // Grant 3 points per level
-        user.updateTitle();
+        if (newStreak % 7 == 0 && newStreak > 0) {
+          goldToAdd += 100;
+          bonusAwarded = true;
+        }
+
+        user.exp += expToAdd;
+        user.gold += goldToAdd;
+
+        while (user.exp >= user.nextLevelExp()) {
+          user.exp -= user.nextLevelExp();
+          user.level += 1;
+          user.unassignedStatPoints += 3;
+          user.updateTitle();
+        }
       }
 
       final batch = firestore.batch();
@@ -409,25 +407,36 @@ class _DailyQuestStateWrapper extends StatelessWidget {
       await _logActivity(uid);
 
       if (context.mounted) {
-        List<Function> animationPipeline = [
-              () => showUnlockOverlay(context, unlockTitle: "DAILY COMPLETE", itemName: questData['title'] ?? 'Quest', iconData: Icons.check_circle, color: Colors.tealAccent)
-        ];
+        if (hasEnergy) {
+          List<Function> animationPipeline = [
+                () => showUnlockOverlay(context, unlockTitle: "DAILY COMPLETE", itemName: questData['title'] ?? 'Quest', iconData: Icons.check_circle, color: Colors.tealAccent)
+          ];
 
-        if (bonusAwarded) {
-          animationPipeline.add(() => showUnlockOverlay(context, unlockTitle: "STREAK BONUS!", itemName: "+100 Gold", iconData: Icons.whatshot, color: Colors.orangeAccent));
-        }
+          if (bonusAwarded) {
+            animationPipeline.add(() => showUnlockOverlay(context, unlockTitle: "STREAK BONUS!", itemName: "+100 Gold", iconData: Icons.whatshot, color: Colors.orangeAccent));
+          }
 
-        if (user.level > initialLevel) {
-          animationPipeline.add(() => showLevelUpOverlay(context, user.level));
-        }
+          if (user.level > initialLevel) {
+            animationPipeline.add(() => showLevelUpOverlay(context, user.level));
+          }
 
-        final unlocks = await _getPostQuestUnlocks(uid, user);
-        for (final item in unlocks) {
-          animationPipeline.add(() => showUnlockOverlay(context, unlockTitle: item['unlockTitle'], itemName: item['itemName'], iconData: item['iconData'], color: item['color']));
-        }
+          final unlocks = await _getPostQuestUnlocks(uid, user);
+          for (final item in unlocks) {
+            animationPipeline.add(() => showUnlockOverlay(context, unlockTitle: item['unlockTitle'], itemName: item['itemName'], iconData: item['iconData'], color: item['color']));
+          }
 
-        for (final animationFunction in animationPipeline) {
-          await animationFunction();
+          for (final animationFunction in animationPipeline) {
+            await animationFunction();
+          }
+        } else {
+          // Warning state for when they were too exhausted
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Quest checked off! (No RPG rewards gained due to exhaustion. Rest to recover Energy.)", style: TextStyle(fontWeight: FontWeight.bold)),
+                backgroundColor: Colors.orangeAccent,
+                duration: Duration(seconds: 4),
+              )
+          );
         }
       }
 
@@ -505,25 +514,26 @@ class _MainQuestsView extends StatelessWidget {
       if (!userDoc.exists) throw Exception("User not found");
 
       final user = User.fromFirestore(userDoc);
+      user.regenerateEnergy(); // Ensure energy is fully updated
+
       final initialLevel = user.level;
 
-      user.regenerateEnergy();
-
+      // --- EXHAUSTION LOGIC (Main Quests) ---
       const int completionCost = 10;
-      if (user.currentEnergy < completionCost) {
-        throw Exception("You are too tired to complete this quest. Rest for a while.");
-      }
-      user.currentEnergy -= completionCost;
+      final bool hasEnergy = user.currentEnergy >= completionCost;
 
-      user.exp += (quest['totalExpReward'] ?? 0).toDouble();
-      user.gold += ((quest['goldReward'] ?? 0) as num).toInt();
+      if (hasEnergy) {
+        user.currentEnergy -= completionCost;
 
-      // --- MODIFIED: Grant unassigned stat points on level up ---
-      while (user.exp >= user.nextLevelExp()) {
-        user.exp -= user.nextLevelExp();
-        user.level += 1;
-        user.unassignedStatPoints += 3; // Grant 3 points per level
-        user.updateTitle();
+        user.exp += (quest['totalExpReward'] ?? 0).toDouble();
+        user.gold += ((quest['goldReward'] ?? 0) as num).toInt();
+
+        while (user.exp >= user.nextLevelExp()) {
+          user.exp -= user.nextLevelExp();
+          user.level += 1;
+          user.unassignedStatPoints += 3;
+          user.updateTitle();
+        }
       }
 
       final batch = firestore.batch();
@@ -534,27 +544,36 @@ class _MainQuestsView extends StatelessWidget {
       });
 
       await batch.commit();
-
       await _trimCompletedQuests(firestore, userRef);
-
       await _logActivity(uid);
 
       if (context.mounted) {
-        List<Function> animationPipeline = [
-              () => showUnlockOverlay(context, unlockTitle: "QUEST COMPLETE", itemName: quest['title'] ?? 'Quest', iconData: Icons.check_circle, color: Colors.green)
-        ];
+        if (hasEnergy) {
+          List<Function> animationPipeline = [
+                () => showUnlockOverlay(context, unlockTitle: "QUEST COMPLETE", itemName: quest['title'] ?? 'Quest', iconData: Icons.check_circle, color: Colors.green)
+          ];
 
-        if (user.level > initialLevel) {
-          animationPipeline.add(() => showLevelUpOverlay(context, user.level));
-        }
+          if (user.level > initialLevel) {
+            animationPipeline.add(() => showLevelUpOverlay(context, user.level));
+          }
 
-        final unlocks = await _getPostQuestUnlocks(uid, user);
-        for (final item in unlocks) {
-          animationPipeline.add(() => showUnlockOverlay(context, unlockTitle: item['unlockTitle'], itemName: item['itemName'], iconData: item['iconData'], color: item['color']));
-        }
+          final unlocks = await _getPostQuestUnlocks(uid, user);
+          for (final item in unlocks) {
+            animationPipeline.add(() => showUnlockOverlay(context, unlockTitle: item['unlockTitle'], itemName: item['itemName'], iconData: item['iconData'], color: item['color']));
+          }
 
-        for (final animationFunction in animationPipeline) {
-          await animationFunction();
+          for (final animationFunction in animationPipeline) {
+            await animationFunction();
+          }
+        } else {
+          // Warning state for when they were too exhausted
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Quest marked as complete! (No RPG rewards gained due to exhaustion. Rest to recover Energy.)", style: TextStyle(fontWeight: FontWeight.bold)),
+                backgroundColor: Colors.orangeAccent,
+                duration: Duration(seconds: 4),
+              )
+          );
         }
       }
     } catch (e) {
@@ -656,7 +675,6 @@ String _getRewardString(Map<String, dynamic> questData) {
   final totalExp = (questData['totalExpReward'] ?? 0).toInt();
   final goldReward = (questData['goldReward'] ?? 0).toInt();
 
-  // --- MODIFIED: Only show stat rewards if they exist (for daily quests) ---
   final statReward = questData['statReward'] as Map<String, dynamic>?;
   if (statReward != null && statReward.isNotEmpty) {
     final points = statReward.values.first;
@@ -845,36 +863,20 @@ void _showAddMainQuestDialog(BuildContext context, String uid) {
             if (title.isNotEmpty) {
               final firestore = FirebaseFirestore.instance;
               final userRef = firestore.collection('users').doc(uid);
-              const int creationCost = 10;
 
               try {
-                final userDoc = await userRef.get();
-                if (!userDoc.exists) throw Exception("User not found");
-
-                final user = User.fromFirestore(userDoc);
-                user.regenerateEnergy();
-
-                if (user.currentEnergy < creationCost) {
-                  throw Exception("Not enough energy to create a quest.");
-                }
-
-                user.currentEnergy -= creationCost;
-
+                // Free quest creation! No energy checked or spent.
                 final totalExp = 50 + random.nextInt(151);
                 final goldReward = 10 + random.nextInt(91);
 
                 final newQuestRef = userRef.collection('quests').doc();
 
-                final batch = firestore.batch();
-                // --- MODIFIED: No longer adding statReward to new main quests ---
-                batch.set(newQuestRef, {
+                await newQuestRef.set({
                   'title': title,
                   'completed': false,
                   'totalExpReward': totalExp,
                   'goldReward': goldReward,
                 });
-                batch.update(userRef, user.toMap());
-                await batch.commit();
 
                 if (context.mounted) Navigator.pop(context);
               } catch (e) {
