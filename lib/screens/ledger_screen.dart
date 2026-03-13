@@ -19,39 +19,37 @@ class _LedgerScreenState extends State<LedgerScreen> {
     return DateFormat('EEE, MMM d, h:mm a').format(timestamp.toDate());
   }
 
+  // --- CREATE NEW TRANSACTION ---
   Future<void> _processTransaction({
     required String personName,
     required double amount,
     required bool isLent,
     required String description,
+    required DateTime selectedDate,
     String? existingDocId,
   }) async {
     final user = _auth.currentUser;
     if (user == null) return;
 
-    final ledgerRef =
-    _firestore.collection('users').doc(user.uid).collection('ledger');
-
+    final ledgerRef = _firestore.collection('users').doc(user.uid).collection('ledger');
     final balanceChange = isLent ? amount : -amount;
 
-    // Note: FieldValue.serverTimestamp() cannot be used inside arrays.
-    // We use Timestamp.now() instead.
     final newTransaction = {
+      // 🛡️ THE FIX: Inject a unique ID based on the exact millisecond it was created
+      'id': DateTime.now().millisecondsSinceEpoch.toString(),
       'amount': amount,
       'isLent': isLent,
       'description': description,
-      'timestamp': Timestamp.now(),
+      'timestamp': Timestamp.fromDate(selectedDate),
     };
 
     try {
       if (existingDocId != null) {
-        // Update existing ledger entry atomically
         await ledgerRef.doc(existingDocId).update({
           'totalBalance': FieldValue.increment(balanceChange),
           'transactions': FieldValue.arrayUnion([newTransaction]),
         });
       } else {
-        // Create a new ledger entry
         await ledgerRef.add({
           'personName': personName,
           'totalBalance': balanceChange,
@@ -60,69 +58,115 @@ class _LedgerScreenState extends State<LedgerScreen> {
         });
       }
 
-      // --- NEW: LOG ACTIVITY TO ADVENTURER'S LOG ---
+      // Log activity to Adventurer's Log
       final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
-      await _firestore
-          .collection('users')
-          .doc(user.uid)
-          .collection('activity_log')
-          .doc(todayStr)
-          .set({
+      await _firestore.collection('users').doc(user.uid).collection('activity_log').doc(todayStr).set({
         'ledgerUpdates': FieldValue.increment(1),
       }, SetOptions(merge: true));
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Ledger Updated Successfully."),
-            backgroundColor: Colors.green,
-          ),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ledger Updated Successfully."), backgroundColor: Colors.green));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("System Error: $e"),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("System Error: $e"), backgroundColor: Colors.redAccent));
       }
     }
   }
 
-  // --- Method to delete a single transaction ---
-  Future<void> _deleteTransaction(String docId, Map<String, dynamic> transaction) async {
+  // --- EDIT EXISTING TRANSACTION SAFELY ---
+  Future<void> _editTransaction(String docId, Map<String, dynamic> oldTx, Map<String, dynamic> newTx) async {
     final user = _auth.currentUser;
     if (user == null) return;
 
-    final isLent = transaction['isLent'] ?? true;
-    final amount = (transaction['amount'] as num?)?.toDouble() ?? 0.0;
+    final ledgerRef = _firestore.collection('users').doc(user.uid).collection('ledger').doc(docId);
 
-    // Reverse the balance impact
-    final balanceChange = isLent ? -amount : amount;
+    final oldAmount = oldTx['isLent'] ? oldTx['amount'] : -oldTx['amount'];
+    final newAmount = newTx['isLent'] ? newTx['amount'] : -newTx['amount'];
+    final balanceChange = newAmount - oldAmount;
+
+    // Ensure the new transaction keeps the same ID as the old one!
+    if (oldTx.containsKey('id')) {
+      newTx['id'] = oldTx['id'];
+    }
 
     try {
-      await _firestore
-          .collection('users')
-          .doc(user.uid)
-          .collection('ledger')
-          .doc(docId)
-          .update({
-        'totalBalance': FieldValue.increment(balanceChange),
-        'transactions': FieldValue.arrayRemove([transaction]),
+      await _firestore.runTransaction((transaction) async {
+        final snapshot = await transaction.get(ledgerRef);
+        if (!snapshot.exists) return;
+
+        List<dynamic> transactions = snapshot.get('transactions');
+
+        final index = transactions.indexWhere((tx) {
+          if (tx.containsKey('id') && oldTx.containsKey('id')) {
+            return tx['id'] == oldTx['id'];
+          }
+          return tx['description'] == oldTx['description'] &&
+              tx['amount'] == oldTx['amount'] &&
+              tx['timestamp'] == oldTx['timestamp'];
+        });
+
+        if (index != -1) {
+          transactions[index] = newTx;
+          transaction.update(ledgerRef, {
+            'transactions': transactions,
+            'totalBalance': FieldValue.increment(balanceChange),
+          });
+        }
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Transaction deleted."), backgroundColor: Colors.amber),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Transaction updated."), backgroundColor: Colors.cyanAccent));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error deleting: $e"), backgroundColor: Colors.redAccent),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error updating: $e"), backgroundColor: Colors.redAccent));
+      }
+    }
+  }
+
+  // --- DELETE SAFE LOGIC (Answers previous active learning question) ---
+  Future<void> _deleteTransaction(String docId, Map<String, dynamic> transactionToRemove) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    final ledgerRef = _firestore.collection('users').doc(user.uid).collection('ledger').doc(docId);
+
+    final isLent = transactionToRemove['isLent'] ?? true;
+    final amount = (transactionToRemove['amount'] as num?)?.toDouble() ?? 0.0;
+    final balanceChange = isLent ? -amount : amount;
+
+    try {
+      await _firestore.runTransaction((transaction) async {
+        final snapshot = await transaction.get(ledgerRef);
+        if (!snapshot.exists) return;
+
+        List<dynamic> transactions = List.from(snapshot.get('transactions'));
+
+        final index = transactions.indexWhere((tx) {
+          if (tx.containsKey('id') && transactionToRemove.containsKey('id')) {
+            return tx['id'] == transactionToRemove['id'];
+          }
+          return tx['description'] == transactionToRemove['description'] &&
+              tx['amount'] == transactionToRemove['amount'] &&
+              tx['timestamp'] == transactionToRemove['timestamp'];
+        });
+
+        if (index != -1) {
+          transactions.removeAt(index);
+          transaction.update(ledgerRef, {
+            'transactions': transactions,
+            'totalBalance': FieldValue.increment(balanceChange),
+          });
+        }
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Transaction deleted."), backgroundColor: Colors.amber));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error deleting: $e"), backgroundColor: Colors.redAccent));
       }
     }
   }
@@ -133,23 +177,13 @@ class _LedgerScreenState extends State<LedgerScreen> {
     if (user == null) return;
 
     try {
-      await _firestore
-          .collection('users')
-          .doc(user.uid)
-          .collection('ledger')
-          .doc(docId)
-          .delete();
-
+      await _firestore.collection('users').doc(user.uid).collection('ledger').doc(docId).delete();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Ledger permanently deleted."), backgroundColor: Colors.redAccent),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ledger permanently deleted."), backgroundColor: Colors.redAccent));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error deleting ledger: $e"), backgroundColor: Colors.redAccent),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error deleting ledger: $e"), backgroundColor: Colors.redAccent));
       }
     }
   }
@@ -167,10 +201,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
           style: TextStyle(color: Colors.white70),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel", style: TextStyle(color: Colors.grey))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
             onPressed: () {
@@ -197,10 +228,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
           style: TextStyle(color: Colors.white70),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel", style: TextStyle(color: Colors.grey))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
             onPressed: () {
@@ -214,27 +242,26 @@ class _LedgerScreenState extends State<LedgerScreen> {
     );
   }
 
-  void _showTransactionDialog({String? existingDocId, String? existingName}) {
+  // --- UNIFIED DIALOG (Create/Edit + Date Picker) ---
+  void _showTransactionDialog({String? existingDocId, String? existingName, Map<String, dynamic>? transactionToEdit}) {
     final formKey = GlobalKey<FormState>();
     final nameController = TextEditingController(text: existingName);
-    final amountController = TextEditingController();
-    final descController = TextEditingController();
-    bool isLent = true; // Default to giving money
+
+    // Pre-fill fields if we are editing an existing transaction
+    final amountController = TextEditingController(text: transactionToEdit?['amount']?.toString() ?? '');
+    final descController = TextEditingController(text: transactionToEdit?['description'] ?? '');
+    bool isLent = transactionToEdit?['isLent'] ?? true;
+    DateTime selectedDate = transactionToEdit?['timestamp']?.toDate() ?? DateTime.now();
 
     showDialog(
       context: context,
       builder: (context) {
         return StatefulBuilder(builder: (context, setState) {
           return AlertDialog(
-            backgroundColor: const Color(0xFF16213E), // Matches RPG theme
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-              side: BorderSide(color: Colors.purpleAccent.withOpacity(0.5)),
-            ),
+            backgroundColor: const Color(0xFF16213E),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.purpleAccent.withOpacity(0.5))),
             title: Text(
-              existingDocId == null
-                  ? "Add New Entity"
-                  : "Update Ledger: $existingName",
+              transactionToEdit != null ? "Edit Transaction" : (existingDocId == null ? "Add New Entity" : "Update Ledger: $existingName"),
               style: const TextStyle(color: Colors.white),
             ),
             content: SingleChildScrollView(
@@ -269,17 +296,60 @@ class _LedgerScreenState extends State<LedgerScreen> {
                       icon: Icons.description_outlined,
                       validator: (val) => val == null || val.isEmpty ? "Description is required" : null,
                     ),
+                    const SizedBox(height: 12),
+
+                    // --- DATE & TIME PICKER ---
+                    InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () async {
+                        final DateTime? pickedDate = await showDatePicker(
+                          context: context,
+                          initialDate: selectedDate,
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime.now(),
+                          builder: (context, child) => Theme(
+                            data: Theme.of(context).copyWith(
+                              colorScheme: const ColorScheme.dark(
+                                primary: Colors.purpleAccent, onPrimary: Colors.black, surface: Color(0xFF16213E), onSurface: Colors.white,
+                              ),
+                            ),
+                            child: child!,
+                          ),
+                        );
+
+                        if (pickedDate != null && context.mounted) {
+                          final TimeOfDay? pickedTime = await showTimePicker(
+                            context: context,
+                            initialTime: TimeOfDay.fromDateTime(selectedDate),
+                          );
+
+                          if (pickedTime != null) {
+                            setState(() {
+                              selectedDate = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, pickedTime.hour, pickedTime.minute);
+                            });
+                          }
+                        }
+                      },
+                      child: InputDecorator(
+                        decoration: InputDecoration(
+                          labelText: "Date & Time",
+                          labelStyle: TextStyle(color: Colors.grey.shade400),
+                          prefixIcon: const Icon(Icons.calendar_today, color: Colors.purpleAccent),
+                          filled: true,
+                          fillColor: Colors.black.withOpacity(0.3),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                        ),
+                        child: Text(DateFormat('MMM d, yyyy - h:mm a').format(selectedDate), style: const TextStyle(color: Colors.white, fontSize: 16)),
+                      ),
+                    ),
                     const SizedBox(height: 24),
+
                     Wrap(
                       alignment: WrapAlignment.center,
                       spacing: 12.0,
-                      runSpacing: 12.0,
                       children: [
                         ChoiceChip(
-                          label: const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-                            child: Text("I Gave Them", style: TextStyle(fontWeight: FontWeight.bold)),
-                          ),
+                          label: const Padding(padding: EdgeInsets.all(4.0), child: Text("I Gave Them", style: TextStyle(fontWeight: FontWeight.bold))),
                           selected: isLent,
                           selectedColor: Colors.amber.withOpacity(0.9),
                           backgroundColor: Colors.black26,
@@ -287,10 +357,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
                           onSelected: (val) => setState(() => isLent = true),
                         ),
                         ChoiceChip(
-                          label: const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-                            child: Text("They Gave Me", style: TextStyle(fontWeight: FontWeight.bold)),
-                          ),
+                          label: const Padding(padding: EdgeInsets.all(4.0), child: Text("They Gave Me", style: TextStyle(fontWeight: FontWeight.bold))),
                           selected: !isLent,
                           selectedColor: Colors.redAccent.withOpacity(0.9),
                           backgroundColor: Colors.black26,
@@ -304,29 +371,33 @@ class _LedgerScreenState extends State<LedgerScreen> {
               ),
             ),
             actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
-              ),
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel", style: TextStyle(color: Colors.grey))),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.purpleAccent,
-                  foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.purpleAccent, foregroundColor: Colors.black),
                 onPressed: () {
                   if (formKey.currentState!.validate()) {
                     final name = nameController.text.trim();
                     final amount = double.tryParse(amountController.text.trim()) ?? 0.0;
                     final desc = descController.text.trim();
 
-                    _processTransaction(
-                      personName: name,
-                      amount: amount,
-                      isLent: isLent,
-                      description: desc,
-                      existingDocId: existingDocId,
-                    );
+                    if (transactionToEdit != null && existingDocId != null) {
+                      final newTx = {
+                        'amount': amount,
+                        'isLent': isLent,
+                        'description': desc,
+                        'timestamp': Timestamp.fromDate(selectedDate),
+                      };
+                      _editTransaction(existingDocId, transactionToEdit, newTx);
+                    } else {
+                      _processTransaction(
+                        personName: name,
+                        amount: amount,
+                        isLent: isLent,
+                        description: desc,
+                        selectedDate: selectedDate,
+                        existingDocId: existingDocId,
+                      );
+                    }
                     Navigator.pop(context);
                   }
                 },
@@ -349,9 +420,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
     return TextFormField(
       controller: controller,
       style: const TextStyle(color: Colors.white),
-      keyboardType: isNumber
-          ? const TextInputType.numberWithOptions(decimal: true)
-          : TextInputType.text,
+      keyboardType: isNumber ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
       validator: validator,
       decoration: InputDecoration(
         labelText: label,
@@ -360,18 +429,9 @@ class _LedgerScreenState extends State<LedgerScreen> {
         filled: true,
         fillColor: Colors.black.withOpacity(0.3),
         errorStyle: const TextStyle(color: Colors.redAccent),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.purpleAccent),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.redAccent),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.purpleAccent)),
+        errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.redAccent)),
       ),
     );
   }
@@ -385,18 +445,13 @@ class _LedgerScreenState extends State<LedgerScreen> {
       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            const Color(0xFF16213E),
-            const Color(0xFF16213E).withOpacity(0.8)
-          ],
+          colors: [const Color(0xFF16213E), const Color(0xFF16213E).withOpacity(0.8)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: Colors.purpleAccent.withOpacity(0.4), width: 1.5),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 15, offset: const Offset(0, 8)),
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 15, offset: const Offset(0, 8))],
       ),
       child: Column(
         children: [
@@ -442,10 +497,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
       children: [
         Text(label, style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
         const SizedBox(height: 6),
-        Text(
-          "₹${amount.toStringAsFixed(2)}",
-          style: TextStyle(color: color, fontSize: 18, fontWeight: FontWeight.bold),
-        ),
+        Text("₹${amount.toStringAsFixed(2)}", style: TextStyle(color: color, fontSize: 18, fontWeight: FontWeight.bold)),
       ],
     );
   }
@@ -457,9 +509,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
     if (user == null) {
       return const Scaffold(
         backgroundColor: Color(0xFF1A1A2E),
-        body: Center(
-            child: Text("System Offline. Please log in.",
-                style: TextStyle(color: Colors.white))),
+        body: Center(child: Text("System Offline. Please log in.", style: TextStyle(color: Colors.white))),
       );
     }
 
@@ -513,10 +563,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
 
             return Column(
               children: [
-                // 1. The Summary Dashboard
                 _buildSummaryDashboard(totalOwedToMe, totalIOwe),
-
-                // 2. The Ledger List (or Empty state)
                 Expanded(
                   child: ledgers.isEmpty
                       ? Center(
@@ -525,23 +572,13 @@ class _LedgerScreenState extends State<LedgerScreen> {
                       children: [
                         Container(
                           padding: const EdgeInsets.all(24),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.2),
-                            shape: BoxShape.circle,
-                          ),
+                          decoration: BoxDecoration(color: Colors.black.withOpacity(0.2), shape: BoxShape.circle),
                           child: Icon(Icons.menu_book_rounded, size: 80, color: Colors.purpleAccent.withOpacity(0.5)),
                         ),
                         const SizedBox(height: 24),
-                        const Text(
-                          "Your ledger is empty.",
-                          style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-                        ),
+                        const Text("Your ledger is empty.", style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 8),
-                        const Text(
-                          "Add an entry to track debts and loans.",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey, fontSize: 15),
-                        ),
+                        const Text("Add an entry to track debts and loans.", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 15)),
                       ],
                     ),
                   )
@@ -554,43 +591,72 @@ class _LedgerScreenState extends State<LedgerScreen> {
                       final personName = data['personName'] ?? 'Unknown';
                       final totalBalance = (data['totalBalance'] as num?)?.toDouble() ?? 0.0;
 
+                      // --- 1️⃣ CHRONOLOGICAL CALCULATION LOGIC ---
                       final rawTransactions = data['transactions'] as List<dynamic>? ?? [];
-                      final transactions = rawTransactions
-                          .map((t) => Map<String, dynamic>.from(t as Map))
-                          .toList()
-                          .reversed
-                          .toList();
+                      List<Map<String, dynamic>> sortedTx = rawTransactions.map((t) => Map<String, dynamic>.from(t as Map)).toList();
 
+                      // Sort old to new to calculate running balance
+                      sortedTx.sort((a, b) {
+                        final tA = a['timestamp'] as Timestamp?;
+                        final tB = b['timestamp'] as Timestamp?;
+                        if (tA == null || tB == null) return 0;
+                        return tA.compareTo(tB);
+                      });
+
+                      double runningBal = 0.0;
+                      int lastSettlementIdx = -1;
+
+                      for (int i = 0; i < sortedTx.length; i++) {
+                        final tx = sortedTx[i];
+                        final isLent = tx['isLent'] ?? true;
+                        final amt = (tx['amount'] as num?)?.toDouble() ?? 0.0;
+                        runningBal += isLent ? amt : -amt;
+
+                        // Use an epsilon for precise double matching to 0
+                        if (runningBal.abs() < 0.001) {
+                          lastSettlementIdx = i;
+                        }
+                      }
+
+                      // Tag transactions as History or Settlement Point
+                      for (int i = 0; i < sortedTx.length; i++) {
+                        sortedTx[i]['_isHistory'] = i <= lastSettlementIdx;
+                        sortedTx[i]['_isSettlementPoint'] = i == lastSettlementIdx;
+                      }
+
+                      // Reverse them back for the UI display (newest first)
+                      final transactions = sortedTx.reversed.toList();
+
+                      // --- CARD HEADER UI LOGIC ---
                       String balanceText;
                       Color balanceColor;
 
-                      if (totalBalance > 0) {
+                      if (totalBalance > 0.001) {
                         balanceText = "They owe you: ₹${totalBalance.toStringAsFixed(2)}";
                         balanceColor = Colors.amber;
-                      } else if (totalBalance < 0) {
+                      } else if (totalBalance < -0.001) {
                         balanceText = "You owe them: ₹${totalBalance.abs().toStringAsFixed(2)}";
                         balanceColor = Colors.redAccent;
                       } else {
                         balanceText = "Accounts Settled";
-                        balanceColor = Colors.tealAccent;
+                        balanceColor = Colors.tealAccent; // A bright, active positive color
                       }
 
                       return Card(
-                        color: const Color(0xFF16213E),
+                        color: const Color(0xFF16213E), // ⬅️ Outer card is NO LONGER dimmed
                         margin: const EdgeInsets.only(bottom: 16),
-                        elevation: 6,
+                        elevation: 6, // ⬅️ Elevation is restored
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                           side: BorderSide(color: balanceColor.withOpacity(0.4), width: 1.5),
                         ),
                         child: Theme(
-                          data: Theme.of(context).copyWith(dividerColor: Colors.transparent), // Removes the ugly divider inside ExpansionTile
+                          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
                           child: ExpansionTile(
                             tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                             childrenPadding: const EdgeInsets.only(bottom: 12, left: 8, right: 8),
                             iconColor: balanceColor,
                             collapsedIconColor: Colors.white70,
-                            // --- PRETTIFIED TITLE ---
                             title: Row(
                               children: [
                                 Container(
@@ -608,7 +674,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
                                     children: [
                                       Text(
                                         personName,
-                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white),
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white), // ⬅️ Text is always white
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                       const SizedBox(height: 4),
@@ -645,45 +711,133 @@ class _LedgerScreenState extends State<LedgerScreen> {
                                   padding: EdgeInsets.all(24.0),
                                   child: Text("No transaction history.", style: TextStyle(color: Colors.grey)),
                                 ),
-                              ...transactions.map((tx) {
-                                final isLent = tx['isLent'] ?? true;
-                                final amount = (tx['amount'] as num?)?.toDouble() ?? 0.0;
-                                final desc = tx['description'] ?? '';
-                                final timestamp = tx['timestamp'] as Timestamp?;
-                                final txColor = isLent ? Colors.amber : Colors.redAccent;
 
-                                return ListTile(
-                                  onLongPress: () => _confirmDeleteTransaction(doc.id, tx),
-                                  leading: Container(
-                                    padding: const EdgeInsets.all(10),
-                                    decoration: BoxDecoration(
-                                      color: txColor.withOpacity(0.15),
-                                      borderRadius: BorderRadius.circular(10),
+                              // --- 2️⃣ DATE GROUPING & GRAY-OUT LOGIC ---
+                              ...() {
+                                Map<String, List<Map<String, dynamic>>> groupedTx = {};
+
+                                for (var tx in transactions) {
+                                  final timestamp = tx['timestamp'] as Timestamp?;
+                                  String dateKey = 'Unknown Date';
+
+                                  if (timestamp != null) {
+                                    final date = timestamp.toDate();
+                                    final now = DateTime.now();
+                                    final today = DateTime(now.year, now.month, now.day);
+                                    final txDate = DateTime(date.year, date.month, date.day);
+                                    final diff = today.difference(txDate).inDays;
+
+                                    if (diff == 0) {
+                                      dateKey = "Today";
+                                    } else if (diff == 1) {
+                                      dateKey = "Yesterday";
+                                    } else {
+                                      dateKey = DateFormat('EEE, MMM d').format(date);
+                                    }
+                                  }
+
+                                  groupedTx.putIfAbsent(dateKey, () => []);
+                                  groupedTx[dateKey]!.add(tx);
+                                }
+
+                                List<Widget> uiElements = [];
+
+                                groupedTx.forEach((dateString, dayTransactions) {
+                                  uiElements.add(
+                                    Padding(
+                                      padding: const EdgeInsets.only(left: 16, top: 12, bottom: 4),
+                                      child: Text(
+                                        dateString.toUpperCase(),
+                                        style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+                                      ),
                                     ),
-                                    child: Icon(
-                                      isLent ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
-                                      color: txColor,
-                                      size: 20,
-                                    ),
-                                  ),
-                                  title: Text(desc, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
-                                  subtitle: Padding(
-                                    padding: const EdgeInsets.only(top: 4.0),
-                                    child: Text(
-                                      timestamp != null ? _formatDate(timestamp) : 'Unknown Date',
-                                      style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
-                                    ),
-                                  ),
-                                  trailing: Text(
-                                    "${isLent ? '+' : '-'}₹${amount.toStringAsFixed(2)}",
-                                    style: TextStyle(
-                                      color: txColor,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 15,
-                                    ),
-                                  ),
-                                );
-                              }),
+                                  );
+
+                                  for (var tx in dayTransactions) {
+                                    final isLent = tx['isLent'] ?? true;
+                                    final amount = (tx['amount'] as num?)?.toDouble() ?? 0.0;
+                                    final desc = tx['description'] ?? '';
+                                    final timestamp = tx['timestamp'] as Timestamp?;
+
+                                    // Apply UI styles based on history status
+                                    final isHistory = tx['_isHistory'] == true;
+                                    final isSettlementPoint = tx['_isSettlementPoint'] == true;
+
+                                    // ⬅️ THIS IS WHERE THE GRAY-OUT HAPPENS
+                                    final txColor = isHistory ? Colors.grey.shade600 : (isLent ? Colors.amber : Colors.redAccent);
+                                    final textColor = isHistory ? Colors.grey.shade500 : Colors.white;
+
+                                    Widget txTile = ListTile(
+                                      onTap: () => _showTransactionDialog(
+                                        existingDocId: doc.id,
+                                        existingName: personName,
+                                        transactionToEdit: tx,
+                                      ),
+                                      onLongPress: () => _confirmDeleteTransaction(doc.id, tx),
+                                      leading: Container(
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(
+                                          color: isHistory ? Colors.grey.withOpacity(0.1) : txColor.withOpacity(0.15),
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: Icon(
+                                          isLent ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
+                                          color: txColor,
+                                          size: 20,
+                                        ),
+                                      ),
+                                      title: Text(desc, style: TextStyle(color: textColor, fontWeight: FontWeight.w500)),
+                                      subtitle: Padding(
+                                        padding: const EdgeInsets.only(top: 4.0),
+                                        child: Text(
+                                          timestamp != null ? DateFormat('h:mm a').format(timestamp.toDate()) : '',
+                                          style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                                        ),
+                                      ),
+                                      trailing: Text(
+                                        "${isLent ? '+' : '-'}₹${amount.toStringAsFixed(2)}",
+                                        style: TextStyle(color: txColor, fontWeight: FontWeight.bold, fontSize: 15),
+                                      ),
+                                    );
+
+                                    // 3️⃣ INJECT THE SETTLED BANNER
+                                    if (isSettlementPoint) {
+                                      uiElements.add(
+                                          Column(
+                                            children: [
+                                              Container(
+                                                  margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.tealAccent.withOpacity(0.1),
+                                                    borderRadius: BorderRadius.circular(12),
+                                                    border: Border.all(color: Colors.tealAccent.withOpacity(0.3)),
+                                                  ),
+                                                  child: Row(
+                                                    mainAxisAlignment: MainAxisAlignment.center,
+                                                    children: [
+                                                      const Icon(Icons.handshake, color: Colors.tealAccent, size: 18),
+                                                      const SizedBox(width: 8),
+                                                      const Text(
+                                                          "ACCOUNT SETTLED",
+                                                          style: TextStyle(color: Colors.tealAccent, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.5)
+                                                      ),
+                                                    ],
+                                                  )
+                                              ),
+                                              txTile,
+                                            ],
+                                          )
+                                      );
+                                    } else {
+                                      uiElements.add(txTile);
+                                    }
+                                  }
+                                });
+
+                                return uiElements;
+                              }(),
+
                               if (transactions.isNotEmpty)
                                 Padding(
                                   padding: const EdgeInsets.only(bottom: 8.0, top: 16.0),

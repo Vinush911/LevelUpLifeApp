@@ -105,6 +105,10 @@ class _WalletScreenState extends State<WalletScreen>
     ExpenseCategory selectedCategory = expense?.category ?? ExpenseCategory.food;
     String selectedPaymentMethod = expense?.paymentMethod ?? 'UPI';
 
+    // 1️⃣ INITIALIZE STATE: Default to the existing expense time, or 'now' if it's new.
+    // Placing it OUTSIDE the StatefulBuilder ensures it doesn't reset when the UI redraws.
+    DateTime selectedDate = expense?.timestamp.toDate() ?? DateTime.now();
+
     final paymentMethods = ['Cash', 'Card', 'UPI', 'Net Banking', 'Other'];
 
     showDialog(
@@ -194,6 +198,67 @@ class _WalletScreenState extends State<WalletScreen>
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
                       ),
                     ),
+                    const SizedBox(height: 12),
+
+                    // 2️⃣ THE CUSTOM DATE/TIME PICKER
+                    InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () async {
+                        final DateTime? pickedDate = await showDatePicker(
+                          context: context,
+                          initialDate: selectedDate,
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime.now(), // Prevent logging future expenses
+                          builder: (context, child) {
+                            return Theme(
+                              data: Theme.of(context).copyWith(
+                                colorScheme: const ColorScheme.dark(
+                                  primary: Colors.purpleAccent,
+                                  onPrimary: Colors.black,
+                                  surface: Color(0xFF16213E),
+                                  onSurface: Colors.white,
+                                ),
+                              ),
+                              child: child!,
+                            );
+                          },
+                        );
+
+                        if (pickedDate != null && context.mounted) {
+                          final TimeOfDay? pickedTime = await showTimePicker(
+                            context: context,
+                            initialTime: TimeOfDay.fromDateTime(selectedDate),
+                          );
+
+                          if (pickedTime != null) {
+                            // Update the local dialog state using the StatefulBuilder's setState
+                            setState(() {
+                              selectedDate = DateTime(
+                                pickedDate.year,
+                                pickedDate.month,
+                                pickedDate.day,
+                                pickedTime.hour,
+                                pickedTime.minute,
+                              );
+                            });
+                          }
+                        }
+                      },
+                      child: InputDecorator(
+                        decoration: InputDecoration(
+                          labelText: "Date & Time",
+                          labelStyle: TextStyle(color: Colors.grey.shade400),
+                          prefixIcon: const Icon(Icons.calendar_today, color: Colors.purpleAccent),
+                          filled: true,
+                          fillColor: Colors.black.withOpacity(0.3),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                        ),
+                        child: Text(
+                          DateFormat('MMM d, yyyy - h:mm a').format(selectedDate),
+                          style: const TextStyle(color: Colors.white, fontSize: 16),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -212,12 +277,13 @@ class _WalletScreenState extends State<WalletScreen>
                     int goldReward = expense == null ? (amount * 0.05).toInt().clamp(1, 20) : 0;
                     int expReward = expense == null ? 10 : 0;
 
+                    // 3️⃣ SAVE THE EXPLICIT DATE to Firestore
                     final data = {
                       'amount': amount,
                       'description': desc,
                       'category': selectedCategory.toString().split('.').last,
                       'paymentMethod': selectedPaymentMethod,
-                      if (expense == null) 'timestamp': FieldValue.serverTimestamp(),
+                      'timestamp': Timestamp.fromDate(selectedDate), // Replaced serverTimestamp
                       if (expense == null) 'goldReward': goldReward,
                       if (expense == null) 'expReward': expReward,
                     };
@@ -230,7 +296,7 @@ class _WalletScreenState extends State<WalletScreen>
                         'exp': FieldValue.increment(expReward),
                       });
 
-                      // --- NEW: LOG ACTIVITY TO ADVENTURER'S LOG ---
+                      // Log activity
                       final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
                       await FirebaseFirestore.instance
                           .collection('users')
