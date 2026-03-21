@@ -125,7 +125,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
     }
   }
 
-  // --- DELETE SAFE LOGIC (Answers previous active learning question) ---
+  // --- DELETE SAFE LOGIC ---
   Future<void> _deleteTransaction(String docId, Map<String, dynamic> transactionToRemove) async {
     final user = _auth.currentUser;
     if (user == null) return;
@@ -549,16 +549,24 @@ class _LedgerScreenState extends State<LedgerScreen> {
               return const Center(child: CircularProgressIndicator(color: Colors.purpleAccent));
             }
 
-            // Calculate Dashboard Totals
+            // --- 🛡️ FIX 1: Dynamically calculate Dashboard Totals to bypass data corruption ---
             double totalOwedToMe = 0.0;
             double totalIOwe = 0.0;
             final ledgers = snapshot.data?.docs ?? [];
 
             for (var doc in ledgers) {
               final data = doc.data() as Map<String, dynamic>;
-              final bal = (data['totalBalance'] as num?)?.toDouble() ?? 0.0;
-              if (bal > 0) totalOwedToMe += bal;
-              if (bal < 0) totalIOwe += bal.abs();
+              final rawTx = data['transactions'] as List<dynamic>? ?? [];
+
+              double actualBal = 0.0;
+              for (var t in rawTx) {
+                final isLent = t['isLent'] ?? true;
+                final amt = (t['amount'] as num?)?.toDouble() ?? 0.0;
+                actualBal += isLent ? amt : -amt;
+              }
+
+              if (actualBal > 0.001) totalOwedToMe += actualBal;
+              if (actualBal < -0.001) totalIOwe += actualBal.abs();
             }
 
             return Column(
@@ -589,13 +597,12 @@ class _LedgerScreenState extends State<LedgerScreen> {
                       final doc = ledgers[index];
                       final data = doc.data() as Map<String, dynamic>;
                       final personName = data['personName'] ?? 'Unknown';
-                      final totalBalance = (data['totalBalance'] as num?)?.toDouble() ?? 0.0;
 
-                      // --- 1️⃣ CHRONOLOGICAL CALCULATION LOGIC ---
+                      // --- 🛡️ FIX 2: Chronological Calculation Logic to enforce single source of truth ---
                       final rawTransactions = data['transactions'] as List<dynamic>? ?? [];
                       List<Map<String, dynamic>> sortedTx = rawTransactions.map((t) => Map<String, dynamic>.from(t as Map)).toList();
 
-                      // Sort old to new to calculate running balance
+                      // Sort old to new to calculate running balance accurately
                       sortedTx.sort((a, b) {
                         final tA = a['timestamp'] as Timestamp?;
                         final tB = b['timestamp'] as Timestamp?;
@@ -612,16 +619,21 @@ class _LedgerScreenState extends State<LedgerScreen> {
                         final amt = (tx['amount'] as num?)?.toDouble() ?? 0.0;
                         runningBal += isLent ? amt : -amt;
 
-                        // Use an epsilon for precise double matching to 0
+                        // MULTIPLE BANNERS FIX: Mark EVERY time the balance hits 0
                         if (runningBal.abs() < 0.001) {
-                          lastSettlementIdx = i;
+                          sortedTx[i]['_isSettlementPoint'] = true;
+                          lastSettlementIdx = i; // Remember the absolute latest one for history gray-out
+                        } else {
+                          sortedTx[i]['_isSettlementPoint'] = false;
                         }
                       }
 
-                      // Tag transactions as History or Settlement Point
+                      // OVERWRITE the potentially corrupted Firestore 'totalBalance' with our true calculation
+                      final double totalBalance = runningBal;
+
+                      // Tag transactions as History (everything up to and including the FINAL settlement)
                       for (int i = 0; i < sortedTx.length; i++) {
                         sortedTx[i]['_isHistory'] = i <= lastSettlementIdx;
-                        sortedTx[i]['_isSettlementPoint'] = i == lastSettlementIdx;
                       }
 
                       // Reverse them back for the UI display (newest first)
@@ -643,9 +655,9 @@ class _LedgerScreenState extends State<LedgerScreen> {
                       }
 
                       return Card(
-                        color: const Color(0xFF16213E), // ⬅️ Outer card is NO LONGER dimmed
+                        color: const Color(0xFF16213E),
                         margin: const EdgeInsets.only(bottom: 16),
-                        elevation: 6, // ⬅️ Elevation is restored
+                        elevation: 6,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                           side: BorderSide(color: balanceColor.withOpacity(0.4), width: 1.5),
@@ -674,7 +686,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
                                     children: [
                                       Text(
                                         personName,
-                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white), // ⬅️ Text is always white
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white),
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                       const SizedBox(height: 4),
@@ -712,7 +724,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
                                   child: Text("No transaction history.", style: TextStyle(color: Colors.grey)),
                                 ),
 
-                              // --- 2️⃣ DATE GROUPING & GRAY-OUT LOGIC ---
+                              // --- DATE GROUPING & GRAY-OUT LOGIC ---
                               ...() {
                                 Map<String, List<Map<String, dynamic>>> groupedTx = {};
 
@@ -763,7 +775,6 @@ class _LedgerScreenState extends State<LedgerScreen> {
                                     final isHistory = tx['_isHistory'] == true;
                                     final isSettlementPoint = tx['_isSettlementPoint'] == true;
 
-                                    // ⬅️ THIS IS WHERE THE GRAY-OUT HAPPENS
                                     final txColor = isHistory ? Colors.grey.shade600 : (isLent ? Colors.amber : Colors.redAccent);
                                     final textColor = isHistory ? Colors.grey.shade500 : Colors.white;
 
@@ -800,38 +811,32 @@ class _LedgerScreenState extends State<LedgerScreen> {
                                       ),
                                     );
 
-                                    // 3️⃣ INJECT THE SETTLED BANNER
+                                    // 🛡️ FIX 3: Push the banner and the tile sequentially, NOT wrapped in a Column!
                                     if (isSettlementPoint) {
                                       uiElements.add(
-                                          Column(
-                                            children: [
-                                              Container(
-                                                  margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                                                  padding: const EdgeInsets.symmetric(vertical: 8),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.tealAccent.withOpacity(0.1),
-                                                    borderRadius: BorderRadius.circular(12),
-                                                    border: Border.all(color: Colors.tealAccent.withOpacity(0.3)),
-                                                  ),
-                                                  child: Row(
-                                                    mainAxisAlignment: MainAxisAlignment.center,
-                                                    children: [
-                                                      const Icon(Icons.handshake, color: Colors.tealAccent, size: 18),
-                                                      const SizedBox(width: 8),
-                                                      const Text(
-                                                          "ACCOUNT SETTLED",
-                                                          style: TextStyle(color: Colors.tealAccent, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.5)
-                                                      ),
-                                                    ],
-                                                  )
+                                          Container(
+                                              margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                                              padding: const EdgeInsets.symmetric(vertical: 8),
+                                              decoration: BoxDecoration(
+                                                color: Colors.tealAccent.withOpacity(0.1),
+                                                borderRadius: BorderRadius.circular(12),
+                                                border: Border.all(color: Colors.tealAccent.withOpacity(0.3)),
                                               ),
-                                              txTile,
-                                            ],
+                                              child: Row(
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                children: [
+                                                  const Icon(Icons.handshake, color: Colors.tealAccent, size: 18),
+                                                  const SizedBox(width: 8),
+                                                  const Text(
+                                                      "ACCOUNT SETTLED",
+                                                      style: TextStyle(color: Colors.tealAccent, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.5)
+                                                  ),
+                                                ],
+                                              )
                                           )
                                       );
-                                    } else {
-                                      uiElements.add(txTile);
                                     }
+                                    uiElements.add(txTile);
                                   }
                                 });
 
