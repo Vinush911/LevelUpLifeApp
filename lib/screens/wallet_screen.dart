@@ -415,7 +415,8 @@ class _WalletScreenState extends State<WalletScreen>
               else level2 = DateFormat('EEEE, MMM d').format(date);
 
             } else if (_selectedFilter == ExpenseFilter.thisMonth) {
-              int weekOfMonth = ((date.day - 1) / 7).floor() + 1;
+              final firstDayOfMonth = DateTime(date.year, date.month, 1);
+              int weekOfMonth = ((date.day + firstDayOfMonth.weekday - 2) / 7).floor() + 1;
               level1 = "Week $weekOfMonth";
 
               final today = DateTime(now.year, now.month, now.day);
@@ -428,7 +429,8 @@ class _WalletScreenState extends State<WalletScreen>
 
             } else {
               level1 = DateFormat('MMMM yyyy').format(date);
-              int weekOfMonth = ((date.day - 1) / 7).floor() + 1;
+              final firstDayOfMonth = DateTime(date.year, date.month, 1);
+              int weekOfMonth = ((date.day + firstDayOfMonth.weekday - 2) / 7).floor() + 1;
               level2 = "Week $weekOfMonth";
             }
 
@@ -717,9 +719,16 @@ class _WalletScreenState extends State<WalletScreen>
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
+          // --- SECTION 1: TOTAL SPENT ---
           Container(
             padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(color: const Color(0xFF16213E), borderRadius: BorderRadius.circular(16)),
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: const Color(0xFF16213E),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.purpleAccent.withOpacity(0.3), width: 1.5),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))],
+            ),
             child: Column(
               children: [
                 const Text("TOTAL SPENT", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
@@ -728,30 +737,350 @@ class _WalletScreenState extends State<WalletScreen>
               ],
             ),
           ),
-          const SizedBox(height: 32),
-          SizedBox(
-            height: 250,
-            child: PieChart(
-              PieChartData(
-                sectionsSpace: 2,
-                centerSpaceRadius: 50,
-                sections: sections,
-              ),
+          const SizedBox(height: 24),
+
+          // --- SECTION 2: BAR CHART ---
+          _buildTrendChart(filteredExpenses),
+          const SizedBox(height: 24),
+
+          // --- SECTION 3: PIE CHART & CATEGORIES ---
+          Container(
+            padding: const EdgeInsets.all(20),
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: const Color(0xFF16213E),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.purpleAccent.withOpacity(0.3), width: 1.5),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text("SPENDING BY CATEGORY", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                const SizedBox(height: 24),
+                SizedBox(
+                  height: 200,
+                  child: PieChart(
+                    PieChartData(
+                      sectionsSpace: 2,
+                      centerSpaceRadius: 50,
+                      sections: sections,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 32),
+                const Divider(color: Colors.white12),
+                const SizedBox(height: 8),
+                ...categoryTotals.entries.map((entry) {
+                  final info = ExpenseCategoryInfo.map[entry.key]!;
+                  final color = Colors.primaries[info.name.length % Colors.primaries.length];
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
+                      child: Icon(info.icon, color: color),
+                    ),
+                    title: Text(info.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    trailing: Text("₹${entry.value.toStringAsFixed(2)}", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                  );
+                }),
+              ],
             ),
           ),
-          const SizedBox(height: 32),
-          ...categoryTotals.entries.map((entry) {
-            final info = ExpenseCategoryInfo.map[entry.key]!;
-            final color = Colors.primaries[info.name.length % Colors.primaries.length];
-            return ListTile(
-              leading: Icon(info.icon, color: color),
-              title: Text(info.name, style: const TextStyle(color: Colors.white)),
-              trailing: Text("₹${entry.value.toStringAsFixed(2)}", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-            );
-          }),
           const SizedBox(height: 80),
         ],
       ),
+    );
+  }
+
+  // --- 2. THE BRAND NEW METHOD AT THE BOTTOM OF THE CLASS ---
+  Widget _buildTrendChart(List<Expense> expenses) {
+    List<String> labels = [];
+    List<double> totals = [];
+    final now = DateTime.now();
+    String dateRangeLabel = "";
+
+    // 🧠 FIND WHICH BAR IS "CURRENT" TO HIGHLIGHT IT!
+    int currentIndex = -1;
+
+    // DYNAMIC BUCKET GENERATION based on your selected filter!
+    if (_selectedFilter == ExpenseFilter.thisWeek) {
+      dateRangeLabel = "This Week";
+      labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      totals = List.filled(7, 0.0);
+      currentIndex = now.weekday - 1; // 0 = Mon, 6 = Sun
+      for (var e in expenses) {
+        totals[e.timestamp.toDate().weekday - 1] += e.amount;
+      }
+    } else if (_selectedFilter == ExpenseFilter.thisMonth) {
+      dateRangeLabel = "This Month";
+      final firstDayOfMonth = DateTime(now.year, now.month, 1);
+      final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+      int totalWeeks = ((daysInMonth + firstDayOfMonth.weekday - 2) / 7).floor() + 1;
+      
+      labels = List.generate(totalWeeks, (i) => 'W${i + 1}');
+      totals = List.filled(totalWeeks, 0.0);
+      currentIndex = ((now.day + firstDayOfMonth.weekday - 2) / 7).floor();
+      
+      for (var e in expenses) {
+        int week = ((e.timestamp.toDate().day + firstDayOfMonth.weekday - 2) / 7).floor();
+        if (week >= totalWeeks) week = totalWeeks - 1; // Catch-all for end of month
+        totals[week] += e.amount;
+      }
+    } else if (_selectedFilter == ExpenseFilter.sixMonths) {
+      dateRangeLabel = "Past 6 Months";
+      currentIndex = 5; // In our 6-month loop, the last item added is always the current month
+      for(int i=5; i>=0; i--) {
+        DateTime d = DateTime(now.year, now.month - i, 1);
+        labels.add(DateFormat('MMM').format(d));
+        totals.add(0.0);
+      }
+      for (var e in expenses) {
+        String monthStr = DateFormat('MMM').format(e.timestamp.toDate());
+        int index = labels.indexOf(monthStr);
+        if (index != -1) totals[index] += e.amount;
+      }
+    } else if (_selectedFilter == ExpenseFilter.year) {
+      dateRangeLabel = "This Year";
+      labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      totals = List.filled(12, 0.0);
+      currentIndex = now.month - 1; // 0 = Jan, 11 = Dec
+      for (var e in expenses) {
+        totals[e.timestamp.toDate().month - 1] += e.amount;
+      }
+    }
+
+    // Calculate max amount for the background tracking (adds 20% padding to the top)
+    double maxAmount = totals.isEmpty ? 0 : totals.reduce(max);
+    double bgMax = maxAmount == 0 ? 100 : maxAmount * 1.2;
+
+    // --- 📊 CALCULATE STATS FOR THE 2X2 GRID ---
+    double total = totals.isEmpty ? 0.0 : totals.reduce((a, b) => a + b);
+
+    // 🧠 CONTEXT-AWARE AVERAGE CALCULATION
+    double average = 0.0;
+    String averageLabel = "Average";
+
+    int activeBuckets = totals.where((t) => t > 0).length;
+
+    if (activeBuckets > 0) {
+      average = total / activeBuckets;
+    }
+
+    if (_selectedFilter == ExpenseFilter.thisWeek) {
+      averageLabel = "Daily Avg";
+    } else if (_selectedFilter == ExpenseFilter.thisMonth) {
+      averageLabel = "Weekly Avg";
+    } else if (_selectedFilter == ExpenseFilter.sixMonths) {
+      averageLabel = "Monthly Avg";
+    } else if (_selectedFilter == ExpenseFilter.year) {
+      averageLabel = "Monthly Avg";
+    }
+
+    double highestVal = -1;
+    String highestLabel = "-";
+    double lowestVal = double.infinity;
+    String lowestLabel = "-";
+
+    for (int i = 0; i < totals.length; i++) {
+      if (totals[i] > highestVal) {
+        highestVal = totals[i];
+        highestLabel = labels[i];
+      }
+      if (totals[i] < lowestVal) {
+        lowestVal = totals[i];
+        lowestLabel = labels[i];
+      }
+    }
+
+    if (lowestVal == double.infinity) lowestVal = 0;
+    if (highestVal == -1) highestVal = 0;
+
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(20),
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: const Color(0xFF16213E),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.purpleAccent.withOpacity(0.3), width: 1.5),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(dateRangeLabel, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                  Text("Unit: ₹", style: TextStyle(color: Colors.grey.shade400, fontSize: 12, fontWeight: FontWeight.w600)),
+                ],
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                height: 220,
+                child: BarChart(
+                  BarChartData(
+                    alignment: BarChartAlignment.spaceAround,
+
+                    // --- 📊 PERMANENT TOOLTIP STYLING ---
+                    barTouchData: BarTouchData(
+                      enabled: true, // Still allows touching other bars
+                      touchTooltipData: BarTouchTooltipData(
+                        getTooltipColor: (group) => group.x == currentIndex
+                            ? Colors.purpleAccent.withOpacity(0.2)
+                            : Colors.grey.withOpacity(0.15), // Muted background for past bars
+                        tooltipPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        tooltipMargin: 8, // Distance from the top of the bar
+                        getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                          final isCurrent = group.x == currentIndex;
+                          return BarTooltipItem(
+                            '₹${rod.toY.toStringAsFixed(0)}',
+                            TextStyle(
+                              color: isCurrent ? Colors.purpleAccent : Colors.grey.shade400,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                              letterSpacing: 0.5,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    // -----------------------------------------
+
+                    borderData: FlBorderData(show: false), // Hides outer box
+                    titlesData: FlTitlesData(
+                      show: true,
+                      bottomTitles: AxisTitles(
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          getTitlesWidget: (double value, TitleMeta meta) {
+                            // 💡 IF THIS IS THE CURRENT BUCKET, HIGHLIGHT THE TEXT!
+                            final bool isCurrent = value.toInt() == currentIndex;
+
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 8.0),
+                              child: Text(
+                                labels[value.toInt()],
+                                style: TextStyle(
+                                    color: isCurrent ? Colors.white : Colors.grey.shade500,
+                                    fontSize: 11,
+                                    fontWeight: isCurrent ? FontWeight.w900 : FontWeight.bold
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    ),
+                    gridData: FlGridData(
+                      show: true,
+                      drawVerticalLine: false,
+                      getDrawingHorizontalLine: (value) => FlLine(
+                        color: Colors.white.withOpacity(0.1),
+                        strokeWidth: 1,
+                        dashArray: [4, 4], // Dashed horizontal lines
+                      ),
+                    ),
+                    barGroups: List.generate(totals.length, (index) {
+                      // 💡 IF THIS IS THE CURRENT BUCKET, MAKE IT GLOW!
+                      final bool isCurrent = index == currentIndex;
+
+                      return BarChartGroupData(
+                        x: index,
+
+                        // --- 📊 PIN THE TOOLTIP TO ALL BARS WITH DATA ---
+                        showingTooltipIndicators: totals[index] > 0 ? [0] : [],
+
+                        barRods: [
+                          BarChartRodData(
+                            toY: totals[index],
+                            color: isCurrent ? Colors.purpleAccent : Colors.purpleAccent.withOpacity(0.4),
+                            width: 18,
+                            borderRadius: BorderRadius.circular(6), // Rounded tops!
+                            backDrawRodData: BackgroundBarChartRodData(
+                              show: true,
+                              toY: bgMax,
+                              color: Colors.white.withOpacity(0.05), // Faint track background
+                            ),
+                          ),
+                        ],
+                      );
+                    }),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16), // Space between chart and stats grid
+
+        // --- 📊 THE 2X2 STATS GRID ---
+        Container(
+          padding: const EdgeInsets.all(20),
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: const Color(0xFF16213E),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.purpleAccent.withOpacity(0.3), width: 1.5),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))],
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(child: _buildStatItem(averageLabel, "₹${average.toStringAsFixed(0)}", Icons.calendar_today, null, Colors.purpleAccent.shade100)),
+                  Expanded(child: _buildStatItem("Total", "₹${total.toStringAsFixed(0)}", Icons.date_range, null, Colors.purpleAccent.shade100)),
+                ],
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(child: _buildStatItem("Least", "₹${lowestVal.toStringAsFixed(0)}", Icons.bar_chart, lowestLabel, Colors.purpleAccent.shade100)),
+                  Expanded(child: _buildStatItem("Most", "₹${highestVal.toStringAsFixed(0)}", Icons.leaderboard, highestLabel, Colors.purpleAccent.shade100)),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // --- 🛠️ HELPER METHOD FOR THE 2X2 GRID ---
+  Widget _buildStatItem(String title, String value, IconData icon, String? subtitle, Color iconColor) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: TextStyle(color: Colors.grey.shade500, fontSize: 12, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Icon(icon, color: iconColor, size: 20),
+            const SizedBox(width: 8),
+            Flexible(
+                child: Text(
+                    value,
+                    style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold, height: 1.0),
+                    overflow: TextOverflow.ellipsis
+                )
+            ),
+          ],
+        ),
+        if (subtitle != null) ...[
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.only(left: 28.0),
+            child: Text(subtitle, style: TextStyle(color: Colors.grey.shade600, fontSize: 12, fontWeight: FontWeight.w600)),
+          ),
+        ]
+      ],
     );
   }
 }
