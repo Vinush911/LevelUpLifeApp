@@ -1,8 +1,9 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_quill/flutter_quill.dart' as quill;
 import '../models/note.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
-import 'package:permission_handler/permission_handler.dart';
 
 class EditNoteScreen extends StatefulWidget {
   final String uid;
@@ -15,240 +16,384 @@ class EditNoteScreen extends StatefulWidget {
 }
 
 class _EditNoteScreenState extends State<EditNoteScreen> {
-  final _titleController = TextEditingController();
-  final _contentController = TextEditingController();
-  bool _isLoading = false;
-
-  // Speech-to-text
-  late stt.SpeechToText _speech;
-  bool _speechAvailable = false;
-  bool _isListening = false;
-  PermissionStatus _permissionStatus = PermissionStatus.denied;
-
-  String _dictationBuffer = '';
-  bool _autoRestart = true;
-
+  late TextEditingController _titleController;
+  late quill.QuillController _quillController;
+  late FocusNode _editorFocusNode;
+  late int _selectedColor;
+  bool _isPinned = false;
+  bool _showFormattingToolbar = false;
+  
+  Timer? _debounce;
+  String? _currentNoteId;
 
   @override
   void initState() {
     super.initState();
+    _editorFocusNode = FocusNode();
+    _currentNoteId = widget.note?.id;
+    _titleController = TextEditingController(text: widget.note?.title ?? '');
+    _selectedColor = widget.note?.colorHex ?? 0xFF2A2A40;
+    _isPinned = widget.note?.isPinned ?? false;
 
-    if (widget.note != null) {
-      _titleController.text = widget.note!.title;
-      _contentController.text = widget.note!.content;
-    }
-
-    _speech = stt.SpeechToText();
-    _initSpeech();
-  }
-
-  Future<void> _initSpeech() async {
-    _permissionStatus = await Permission.microphone.request();
-
-    if (_permissionStatus != PermissionStatus.granted) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Microphone permission required")),
-        );
+    // Load rich text from JSON delta, or fallback to plain text migration
+    quill.Document document;
+    if (widget.note != null && widget.note!.content.isNotEmpty) {
+      try {
+        final json = jsonDecode(widget.note!.content);
+        document = quill.Document.fromJson(json);
+      } catch (e) {
+        // Migration: Old note is plain text! Insert it into a new document.
+        document = quill.Document()..insert(0, widget.note!.content);
       }
-      return;
+    } else {
+      document = quill.Document();
     }
 
-    _speechAvailable = await _speech.initialize(
-      onStatus: (status) {
-        if (status == 'done' && _isListening && _autoRestart) {
-          _speech.stop();
-          _listen(); // 🔁 auto-restart for continuous dictation
-        }
-      },
-      onError: (error) => debugPrint("Speech error: $error"),
+    _quillController = quill.QuillController(
+      document: document,
+      selection: const TextSelection.collapsed(offset: 0),
     );
 
+    _titleController.addListener(_onTextChanged);
+    _quillController.document.changes.listen((_) => _onTextChanged());
 
-    if (mounted) setState(() {});
+    _editorFocusNode.addListener(() {
+      if (_editorFocusNode.hasFocus && _showFormattingToolbar) {
+        setState(() => _showFormattingToolbar = false);
+      }
+    });
+  }
+
+  void _onTextChanged() {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 1000), () {
+      _saveNote();
+    });
   }
 
   @override
   void dispose() {
-    _speech.stop();
+    _debounce?.cancel();
+    // Final save to catch any lingering edits immediately before pop
+    if (_titleController.text.isNotEmpty || !_quillController.document.isEmpty()) {
+      _saveNote();
+    }
     _titleController.dispose();
-    _contentController.dispose();
+    _quillController.dispose();
+    _editorFocusNode.dispose();
     super.dispose();
   }
 
-  void _listen() {
-    if (!_speechAvailable || _permissionStatus != PermissionStatus.granted) return;
-
-    if (!_isListening) {
-      setState(() => _isListening = true);
-
-      _autoRestart = true;
-      _dictationBuffer = _contentController.text;
-
-      _speech.listen(
-        listenFor: const Duration(minutes: 5),
-        pauseFor: const Duration(seconds: 2),
-        partialResults: true,
-        cancelOnError: true,
-        listenMode: stt.ListenMode.dictation,
-        onResult: (val) {
-          if (!val.finalResult) return; // 🔑 ignore partials
-
-          setState(() {
-            _dictationBuffer =
-                (_dictationBuffer + ' ' + val.recognizedWords).trim();
-
-            _contentController.text = _dictationBuffer;
-            _contentController.selection = TextSelection.fromPosition(
-              TextPosition(offset: _contentController.text.length),
-            );
-          });
-        },
-      );
-    } else {
-      _autoRestart = false;
-      setState(() => _isListening = false);
-      _speech.stop();
-    }
-  }
-
-
   Future<void> _saveNote() async {
     final title = _titleController.text.trim();
-    final content = _contentController.text.trim();
+    final plainText = _quillController.document.toPlainText().trim();
+    final jsonDelta = jsonEncode(_quillController.document.toDelta().toJson());
 
-    if (title.isEmpty && content.isEmpty) return;
+    // If both are empty and we haven't created a document yet, do nothing.
+    if (title.isEmpty && plainText.isEmpty && _currentNoteId == null) return;
 
-    setState(() => _isLoading = true);
-
-    final notesRef = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.uid)
-        .collection('notes');
-
-    final now = Timestamp.now();
+    final firestore = FirebaseFirestore.instance;
+    final notesRef = firestore.collection('users').doc(widget.uid).collection('notes');
 
     try {
-      if (widget.note == null) {
-        await notesRef.add({
+      if (_currentNoteId == null) {
+        // Create new note
+        final docRef = await notesRef.add({
           'title': title,
-          'content': content,
-          'createdAt': now,
-          'lastModified': now,
+          'content': jsonDelta, // Store Rich Text JSON
+          'plainTextPreview': plainText, // Store raw text for grid cards
+          'timestamp': FieldValue.serverTimestamp(),
+          'lastModified': FieldValue.serverTimestamp(),
+          'isPinned': _isPinned,
+          'colorHex': _selectedColor,
         });
+        _currentNoteId = docRef.id;
       } else {
-        await notesRef.doc(widget.note!.id).update({
+        // Update existing note
+        await notesRef.doc(_currentNoteId).update({
           'title': title,
-          'content': content,
-          'lastModified': now,
+          'content': jsonDelta,
+          'plainTextPreview': plainText,
+          'lastModified': FieldValue.serverTimestamp(),
+          'isPinned': _isPinned,
+          'colorHex': _selectedColor,
         });
       }
-
-      if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error saving note: $e")),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+      debugPrint('Error auto-saving note: $e');
     }
   }
 
-  Future<void> _deleteNote() async {
-    if (widget.note == null) return;
+  void _toggleCheckList() {
+    final format = _quillController.getSelectionStyle().attributes[quill.Attribute.list.key];
+    if (format?.value == quill.Attribute.unchecked.value || format?.value == quill.Attribute.checked.value) {
+      _quillController.formatSelection(quill.Attribute.clone(quill.Attribute.list, null));
+    } else {
+      _quillController.formatSelection(quill.Attribute.unchecked);
+    }
+  }
 
-    final confirm = await showDialog<bool>(
+  Future<void> _confirmDelete() async {
+    final result = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("Delete Note"),
-        content: const Text("Are you sure?"),
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF16213E),
+        title: const Text("Delete Note?", style: TextStyle(color: Colors.white)),
+        content: const Text("Are you sure you want to delete this note? This action cannot be undone.", style: TextStyle(color: Colors.white70)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
           TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text("Delete", style: TextStyle(color: Colors.red)),
+            onPressed: () => Navigator.pop(context, false), 
+            child: const Text("Cancel", style: TextStyle(color: Colors.white54))
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true), 
+            child: const Text("Delete", style: TextStyle(color: Colors.redAccent))
           ),
         ],
+      )
+    );
+    if (result == true && _currentNoteId != null) {
+      await FirebaseFirestore.instance.collection('users').doc(widget.uid).collection('notes').doc(_currentNoteId).delete();
+      if (mounted) Navigator.of(context).pop();
+    } else if (result == true && _currentNoteId == null) {
+      if (mounted) Navigator.of(context).pop();
+    }
+  }
+
+  void _showColorPicker() {
+    FocusScope.of(context).unfocus(); // Hide keyboard cleanly
+    final colors = [
+      0xFF2A2A40, // Default Dark
+      0xFF5C2C35, // Burgundy
+      0xFF234438, // Forest
+      0xFF2A3C5A, // Ocean
+      0xFF5A3E26, // Bronze
+      0xFF4A235A, // Royal
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        height: 140,
+        decoration: const BoxDecoration(
+          color: Color(0xFF16213E), // Standard panel color
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: colors.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 16),
+          itemBuilder: (context, index) {
+            final color = colors[index];
+            final isSelected = _selectedColor == color;
+            return GestureDetector(
+              onTap: () {
+                setState(() => _selectedColor = color);
+                _saveNote();
+                Navigator.pop(ctx);
+              },
+              child: Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: Color(color),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: isSelected ? Colors.amber : Colors.white24, width: isSelected ? 3 : 1),
+                  boxShadow: isSelected ? [BoxShadow(color: Color(color).withOpacity(0.8), blurRadius: 8)] : null,
+                ),
+                child: isSelected ? const Icon(Icons.check, color: Colors.amber) : null,
+              ),
+            );
+          },
+        ),
       ),
     );
-
-    if (confirm != true) return;
-
-    setState(() => _isLoading = true);
-
-    try {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.uid)
-          .collection('notes')
-          .doc(widget.note!.id)
-          .delete();
-
-      if (mounted) Navigator.pop(context);
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Color(_selectedColor),
       appBar: AppBar(
-        title: Text(widget.note == null ? "New Note" : "Edit Note"),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          if (widget.note != null)
-            IconButton(
-              icon: const Icon(Icons.delete_outline),
-              onPressed: _isLoading ? null : _deleteNote,
-            ),
           IconButton(
-            icon: _isLoading
-                ? const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-                : const Icon(Icons.save),
-            onPressed: _isLoading ? null : _saveNote,
+            icon: Icon(
+              _isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+              color: _isPinned ? Colors.white : Colors.white70,
+            ),
+            tooltip: _isPinned ? "Unpin" : "Pin",
+            onPressed: () {
+              setState(() => _isPinned = !_isPinned);
+              _saveNote();
+            },
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
+      body: SafeArea(
         child: Column(
           children: [
-            TextField(
-              controller: _titleController,
-              decoration: const InputDecoration(
-                hintText: "Title",
-                border: InputBorder.none,
-              ),
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const Divider(),
-            Expanded(
-              child: TextField(
-                controller: _contentController,
-                maxLines: null,
-                expands: true,
-                keyboardType: TextInputType.multiline,
-                decoration: const InputDecoration(
-                  hintText: "Write your note...",
-                  border: InputBorder.none,
+
+
+              // --- TITLE EDITOR ---
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
+                child: TextField(
+                  controller: _titleController,
+                  style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white, height: 1.3),
+                  decoration: const InputDecoration(
+                    hintText: "Title",
+                    hintStyle: TextStyle(color: Colors.white54, fontSize: 26, fontWeight: FontWeight.bold),
+                    border: InputBorder.none,
+                  ),
+                  textCapitalization: TextCapitalization.sentences,
+                  maxLines: null,
                 ),
               ),
-            ),
-            IconButton(
-              iconSize: 32,
-              icon: Icon(_isListening ? Icons.mic_off : Icons.mic),
-              color: _isListening ? Colors.red : Theme.of(context).colorScheme.secondary,
-              onPressed: _listen,
-            ),
-          ],
+
+              // --- CONTENT EDITOR (WYSIWYG) ---
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                  child: quill.QuillEditor.basic(
+                    controller: _quillController,
+                    focusNode: _editorFocusNode,
+                    config: quill.QuillEditorConfig(
+                      placeholder: "Start writing your rich note here...",
+                      customStyles: quill.DefaultStyles(
+                        placeHolder: quill.DefaultTextBlockStyle(
+                          const TextStyle(color: Colors.white54, fontSize: 17),
+                          const quill.HorizontalSpacing(0, 0),
+                          const quill.VerticalSpacing(0, 0),
+                          const quill.VerticalSpacing(0, 0),
+                          null,
+                        ),
+                        paragraph: quill.DefaultTextBlockStyle(
+                          const TextStyle(fontSize: 17, color: Colors.white70, height: 1.6),
+                          const quill.HorizontalSpacing(0, 0),
+                          const quill.VerticalSpacing(0, 0),
+                          const quill.VerticalSpacing(0, 0),
+                          null,
+                        ),
+                        lists: quill.DefaultListBlockStyle(
+                          const TextStyle(fontSize: 17, color: Colors.white70, height: 1.6),
+                          const quill.HorizontalSpacing(0, 0),
+                          const quill.VerticalSpacing(0, 0),
+                          const quill.VerticalSpacing(0, 0),
+                          null,
+                          null,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              // --- BOTTOM SECTION (PINNED ABOVE KEYBOARD) ---
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.15),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // --- RICH TEXT TOOLBAR (ONLY WHEN TOGGLED) ---
+                    if (_showFormattingToolbar)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8.0, bottom: 4.0, left: 8.0, right: 8.0),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: quill.QuillSimpleToolbar(
+                                controller: _quillController,
+                                config: const quill.QuillSimpleToolbarConfig(
+                                  showFontFamily: false,
+                                  showFontSize: true,
+                                  showBoldButton: true,
+                                  showItalicButton: true,
+                                  showUnderLineButton: true,
+                                  showStrikeThrough: true,
+                                  showColorButton: false,
+                                  showBackgroundColorButton: true,
+                                  showListNumbers: true,
+                                  showListBullets: true,
+                                  showListCheck: false, // Removed as requested
+                                  showSearchButton: false,
+                                  showInlineCode: false,
+                                  showCodeBlock: false,
+                                  showQuote: false,
+                                  showLink: false,
+                                  showIndent: false,
+                                  showUndo: false,
+                                  showRedo: false,
+                                  showAlignmentButtons: false,
+                                  showDirection: false,
+                                  showHeaderStyle: false,
+                                  showClearFormat: false,
+                                  showClipboardCopy: false,
+                                  showClipboardCut: false,
+                                  showClipboardPaste: false,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.close, color: Colors.white70),
+                              onPressed: () {
+                                setState(() => _showFormattingToolbar = false);
+                                _editorFocusNode.requestFocus();
+                              },
+                            )
+                          ],
+                        ),
+                      ),
+                    
+                    // --- SETTINGS TOOLBAR (DEFAULT STATE) ---
+                    if (!_showFormattingToolbar)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.text_format, color: Colors.white70),
+                                  onPressed: () {
+                                    setState(() => _showFormattingToolbar = true);
+                                    _editorFocusNode.unfocus(); // Close keyboard
+                                  },
+                                  tooltip: "Format Text",
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.check_box_outlined, color: Colors.white70),
+                                  onPressed: _toggleCheckList,
+                                  tooltip: "Add Checklist",
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.palette_outlined, color: Colors.white70),
+                                  onPressed: _showColorPicker,
+                                  tooltip: "Change Color",
+                                ),
+                              ],
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline, color: Colors.white70),
+                              onPressed: _confirmDelete,
+                              tooltip: "Delete",
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-    );
+      );
   }
 }
